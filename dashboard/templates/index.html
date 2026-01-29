@@ -5,8 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Park&Ride Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
     <div class="dashboard">
@@ -16,11 +18,19 @@
             <div class="header-controls">
                 <div class="time-range-selector">
                     <span class="time-range-label">Time Range:</span>
-                    <button class="time-btn" data-hours="1">1h</button>
-                    <button class="time-btn" data-hours="6">6h</button>
-                    <button class="time-btn active" data-hours="24">24h</button>
-                    <button class="time-btn" data-hours="48">48h</button>
-                    <button class="time-btn" data-hours="168">7d</button>
+                    <select id="time-range-select" class="time-range-dropdown">
+                        <option value="1">1h</option>
+                        <option value="6">6h</option>
+                        <option value="12">12h</option>
+                        <option value="24" selected>24h</option>
+                        <option value="48">2d</option>
+                        <option value="72">3d</option>
+                        <option value="168">7d</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <div id="custom-range-container" class="custom-range-container" style="display: none;">
+                        <input type="text" id="date-range-picker" placeholder="Select date range">
+                    </div>
                 </div>
                 <button id="add-chart-btn" class="btn btn-primary">+ Add Chart</button>
             </div>

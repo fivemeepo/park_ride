@@ -9,6 +9,8 @@ class DashboardApp {
         this.refreshTimer = null;   // Auto-refresh timer
         this.editingChartId = null; // Currently editing chart ID
         this.lastAutoTitle = '';    // Track last auto-generated title
+        this.datePicker = null;     // Flatpickr instance
+        this.customDateRange = null; // { start, end } for custom range
 
         // Chart colors palette
         this.colors = [
@@ -22,9 +24,10 @@ class DashboardApp {
         await this.loadConfig();
         this.renderCharts();
         this.setupEventListeners();
+        this.initDatePicker();
         this.startAutoRefresh();
         this.updateLastUpdated();
-        this.updateTimeRangeButtons();
+        this.updateTimeRangeDropdown();
     }
 
     // --- API Methods ---
@@ -71,11 +74,24 @@ class DashboardApp {
         }
     }
 
+    formatLocalISO(date) {
+        // Format date in local time as ISO string (YYYY-MM-DDTHH:mm:ss)
+        // This avoids timezone conversion that toISOString() does
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
     async fetchReadings(carparks, hours) {
         try {
-            const response = await fetch(
-                `/api/readings?carpark=${encodeURIComponent(carparks.join(','))}&hours=${hours}`
-            );
+            let url = `/api/readings?carpark=${encodeURIComponent(carparks.join(','))}`;
+            if (this.customDateRange) {
+                const start = this.formatLocalISO(this.customDateRange.start);
+                const end = this.formatLocalISO(this.customDateRange.end);
+                url += `&start=${start}&end=${end}`;
+            } else {
+                url += `&hours=${hours}`;
+            }
+            const response = await fetch(url);
             const data = await response.json();
             return data.readings || {};
         } catch (error) {
@@ -145,10 +161,18 @@ class DashboardApp {
     }
 
     getTimeRangeLabel(hours) {
+        if (this.customDateRange) {
+            const options = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+            const start = this.customDateRange.start.toLocaleString(undefined, options);
+            const end = this.customDateRange.end.toLocaleString(undefined, options);
+            return `${start} - ${end}`;
+        }
         if (hours === 1) return 'Last 1 hour';
         if (hours === 6) return 'Last 6 hours';
+        if (hours === 12) return 'Last 12 hours';
         if (hours === 24) return 'Last 24 hours';
-        if (hours === 48) return 'Last 48 hours';
+        if (hours === 48) return 'Last 2 days';
+        if (hours === 72) return 'Last 3 days';
         if (hours === 168) return 'Last 7 days';
         return `Last ${hours} hours`;
     }
@@ -190,18 +214,71 @@ class DashboardApp {
         }
     }
 
-    updateTimeRangeButtons() {
+    updateTimeRangeDropdown() {
+        const select = document.getElementById('time-range-select');
         const hours = this.config.settings.timeRange || 24;
-        document.querySelectorAll('.time-btn').forEach(btn => {
-            const btnHours = parseInt(btn.dataset.hours);
-            btn.classList.toggle('active', btnHours === hours);
+        const customContainer = document.getElementById('custom-range-container');
+
+        // Restore custom range from config if present
+        if (this.config.settings.customRange && !this.customDateRange) {
+            this.customDateRange = {
+                start: new Date(this.config.settings.customRange.start),
+                end: new Date(this.config.settings.customRange.end)
+            };
+            if (this.datePicker) {
+                this.datePicker.setDate([this.customDateRange.start, this.customDateRange.end], false);
+            }
+        }
+
+        if (this.customDateRange) {
+            select.value = 'custom';
+            customContainer.style.display = '';
+        } else {
+            select.value = hours;
+            customContainer.style.display = 'none';
+        }
+    }
+
+    initDatePicker() {
+        this.datePicker = flatpickr('#date-range-picker', {
+            mode: 'range',
+            enableTime: true,
+            time_24hr: true,
+            enableSeconds: true,
+            dateFormat: 'Y-m-d H:i:S',
+            defaultDate: [new Date(), new Date()],
+            maxDate: 'today',
+            onChange: (selectedDates) => {
+                if (selectedDates.length === 2) {
+                    this.setCustomDateRange(selectedDates[0], selectedDates[1]);
+                }
+            }
         });
+
+        // Restore picker dates if custom range is set
+        if (this.customDateRange) {
+            this.datePicker.setDate([this.customDateRange.start, this.customDateRange.end], false);
+        }
+    }
+
+    setCustomDateRange(start, end) {
+        this.customDateRange = { start, end };
+        // Calculate hours from start to end
+        const hours = Math.ceil((end - start) / (1000 * 60 * 60));
+        this.config.settings.timeRange = hours;
+        this.config.settings.customRange = { start: start.toISOString(), end: end.toISOString() };
+        this.saveConfig();
+        this.refreshAllCharts();
     }
 
     setGlobalTimeRange(hours) {
+        this.customDateRange = null;
+        delete this.config.settings.customRange;
+        document.getElementById('custom-range-container').style.display = 'none';
+
         this.config.settings.timeRange = hours;
         this.saveConfig();
-        this.updateTimeRangeButtons();
+        this.updateTimeRangeDropdown();
 
         // Update all chart x-axis configurations and refresh
         Object.keys(this.charts).forEach(chartId => {
@@ -275,8 +352,8 @@ class DashboardApp {
             backgroundColor: this.colors[index % this.colors.length] + '20',
             fill: chartConfig.carparks.length === 1,
             tension: 0.3,
-            pointRadius: 3,
-            pointHoverRadius: 6,
+            pointRadius: 1,
+            pointHoverRadius: 4,
             borderWidth: 2
         }));
 
@@ -354,7 +431,8 @@ class DashboardApp {
                                 return '';
                             },
                             label: function(context) {
-                                return `${context.dataset.label}: ${context.parsed.y} spots`;
+                                const total = context.raw.total || '-';
+                                return `${context.dataset.label}: ${context.parsed.y}/${total} spots`;
                             }
                         }
                     }
@@ -378,7 +456,8 @@ class DashboardApp {
             const carparkReadings = readings[carpark] || [];
             chart.data.datasets[index].data = carparkReadings.map(r => ({
                 x: new Date(r.timestamp),
-                y: r.available
+                y: r.available,
+                total: r.total_spots
             }));
         });
 
@@ -391,7 +470,8 @@ class DashboardApp {
             const latestValues = chartConfig.carparks.map(carpark => {
                 const data = readings[carpark] || [];
                 if (data.length > 0) {
-                    return `${carpark}: ${data[data.length - 1].available}`;
+                    const latest = data[data.length - 1];
+                    return `${carpark}: ${latest.available}/${latest.total_spots}`;
                 }
                 return `${carpark}: -`;
             });
@@ -596,12 +676,15 @@ class DashboardApp {
             }
         });
 
-        // Time range buttons
-        document.querySelectorAll('.time-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const hours = parseInt(btn.dataset.hours);
-                this.setGlobalTimeRange(hours);
-            });
+        // Time range dropdown
+        document.getElementById('time-range-select').addEventListener('change', (e) => {
+            const value = e.target.value;
+            if (value === 'custom') {
+                document.getElementById('custom-range-container').style.display = '';
+                this.datePicker.open();
+            } else {
+                this.setGlobalTimeRange(parseInt(value));
+            }
         });
 
         // Keyboard shortcuts

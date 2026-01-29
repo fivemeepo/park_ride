@@ -2,6 +2,7 @@
 REST API endpoints for the dashboard.
 """
 
+from datetime import datetime
 from flask import Blueprint, jsonify, request, current_app
 from parkride.storage import ParkingDatabase
 from dashboard.config import DashboardConfig
@@ -38,10 +39,14 @@ def get_readings():
     Query params:
         carpark: Comma-separated list of carpark names
         hours: Number of hours of history (default: 24)
+        start: ISO format start datetime (optional, for custom range)
+        end: ISO format end datetime (optional, for custom range)
     """
     carparks_param = request.args.get('carpark', '')
     carparks = [c.strip() for c in carparks_param.split(',') if c.strip()]
     hours = int(request.args.get('hours', 24))
+    start = request.args.get('start')
+    end = request.args.get('end')
 
     if not carparks:
         return jsonify({'error': 'No carparks specified'}), 400
@@ -50,7 +55,12 @@ def get_readings():
     try:
         result = {}
         for carpark in carparks:
-            readings = db.get_readings(carpark=carpark, hours=hours)
+            if start and end:
+                start_time = datetime.fromisoformat(start.replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(end.replace('Z', '+00:00'))
+                readings = db.get_readings(carpark=carpark, start_time=start_time, end_time=end_time)
+            else:
+                readings = db.get_readings(carpark=carpark, hours=hours)
             result[carpark] = [
                 {
                     'timestamp': r['timestamp'],
