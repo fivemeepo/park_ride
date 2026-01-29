@@ -27,9 +27,23 @@
       ],
       "id": "chart-1769657127655",
       "title": "Manly Vale"
+    },
+    {
+      "id": "chart-1769685453960",
+      "title": "Brookvale",
+      "carparks": [
+        "Brookvale"
+      ]
+    },
+    {
+      "id": "chart-1769685472064",
+      "title": "Mona Vale",
+      "carparks": [
+        "Mona Vale"
+      ]
     }
   ],
-  "lastModified": "2026-01-29T21:15:20.508488",
+  "lastModified": "2026-01-29T22:17:52.069168",
   "settings": {
     "autoRefresh": true,
     "refreshInterval": 60,

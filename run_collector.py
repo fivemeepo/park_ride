@@ -70,7 +70,7 @@ def check_and_notify(
         if notify and spaces >= threshold:
             message = f"{item['name']} has {spaces} available spaces!"
             log(f">>> {message}")
-            send_notification("Parking Available!", message)
+            #send_notification("Parking Available!", message)
 
         return spaces
 
