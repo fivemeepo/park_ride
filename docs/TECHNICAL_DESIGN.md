@@ -14,7 +14,7 @@ This document describes the technical design for querying Transport NSW Park&Rid
             │                    │                    │
             ▼                    ▼                    ▼
 ┌───────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
-│ parking_graphql.py│  │parking_visualize│  │  dashboard/ (Flask) │
+│  run_collector.py │  │parkride.visualize│ │  dashboard/ (Flask) │
 │  (Data Collector) │  │   (matplotlib)  │  │  (Web Dashboard)    │
 │ - GraphQL fetch   │  │ - LiveChart     │  │ - REST API          │
 │ - 60s polling     │  │ - Static charts │  │ - Chart.js frontend │
@@ -23,7 +23,7 @@ This document describes the technical design for querying Transport NSW Park&Rid
             │                    │                    │
             ▼                    ▼                    ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      parking_storage.py                         │
+│                      parkride.storage                           │
 │                     (SQLite Data Layer)                         │
 │  - CRUD operations  - Time-based queries  - CSV export          │
 └─────────────────────────────────────────────────────────────────┘
@@ -39,37 +39,42 @@ This document describes the technical design for querying Transport NSW Park&Rid
 
 ```
 park_ride/
-├── parking_graphql.py      # Data collector - GraphQL API client
-├── parking_storage.py      # SQLite database module
-├── parking_visualize.py    # Visualization module (matplotlib)
+├── run_collector.py        # Data collector entry point
 ├── run_dashboard.py        # Web dashboard entry point
+├── parkride/               # Main Python package
+│   ├── __init__.py         # Package exports
+│   ├── collector.py        # GraphQL data fetcher
+│   ├── storage.py          # SQLite database module
+│   ├── visualize.py        # Visualization (matplotlib)
+│   └── legacy.py           # Playwright fallback
 ├── dashboard/              # Flask web dashboard
 │   ├── __init__.py         # App factory
 │   ├── app.py              # Main routes
 │   ├── api.py              # REST API endpoints
 │   ├── config.py           # Config file handler
 │   ├── templates/
-│   │   └── index.html      # Dashboard HTML
+│   │   └── index.html
 │   └── static/
 │       ├── css/
 │       │   └── dashboard.css
 │       └── js/
-│           └── dashboard.js  # Chart.js integration
-├── parking_query.py        # Original Playwright version (fallback)
+│           └── dashboard.js
+├── docs/                   # Documentation
+│   ├── TECHNICAL_DESIGN.md
+│   └── shortcuts_guide.md
 ├── parking_data.db         # SQLite database (auto-created)
 ├── dashboard_config.json   # Dashboard config (auto-created)
 ├── requirements.txt        # Python dependencies
-├── venv/                   # Virtual environment
 └── .gitignore
 ```
 
 ## Data Flow
 
-1. **Fetch**: `parking_graphql.py` queries Transport NSW GraphQL API every 60s (default)
+1. **Fetch**: `parkride.collector` queries Transport NSW GraphQL API every 60s (default)
 2. **Parse**: Response parsed to extract carpark name, total spots, occupancy
 3. **Calculate**: Available spots = total spots - occupancy
-4. **Store**: Readings saved to SQLite via `parking_storage.py`
-5. **Display**: Console output + optional live chart via `parking_visualize.py`
+4. **Store**: Readings saved to SQLite via `parkride.storage`
+5. **Display**: Console output + optional live chart via `parkride.visualize`
 
 ## API Integration
 

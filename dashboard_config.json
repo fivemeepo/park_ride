@@ -1,0 +1,18 @@
+{
+  "charts": [
+    {
+      "id": "chart-1769654954406",
+      "title": "Narrabeen",
+      "carparks": [
+        "Narrabeen"
+      ],
+      "hours": 24
+    }
+  ],
+  "lastModified": "2026-01-29T13:49:14.415533",
+  "settings": {
+    "autoRefresh": true,
+    "refreshInterval": 60
+  },
+  "version": 1
+}

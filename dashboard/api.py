@@ -3,7 +3,7 @@ REST API endpoints for the dashboard.
 """
 
 from flask import Blueprint, jsonify, request, current_app
-from parking_storage import ParkingDatabase
+from parkride.storage import ParkingDatabase
 from dashboard.config import DashboardConfig
 
 api_bp = Blueprint('api', __name__)

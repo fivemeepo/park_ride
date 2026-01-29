@@ -37,7 +37,7 @@ def main():
     # Check if database exists
     if not os.path.exists(args.db):
         print(f"Warning: Database file '{args.db}' not found.")
-        print("Run 'python parking_graphql.py' first to collect some data.")
+        print("Run 'python run_collector.py' first to collect some data.")
 
     app = create_app({
         'db_path': args.db,

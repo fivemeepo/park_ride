@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Callable
 import threading
 
-from parking_storage import ParkingDatabase
+from parkride.storage import ParkingDatabase
 
 
 class LiveChart:

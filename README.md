@@ -25,7 +25,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Check Narrabeen parking availability
-python parking_graphql.py --carpark Narrabeen
+python run_collector.py --carpark Narrabeen
 ```
 
 ## Usage
@@ -34,43 +34,43 @@ python parking_graphql.py --carpark Narrabeen
 
 ```bash
 # Check specific carpark
-python parking_graphql.py --carpark Narrabeen
+python run_collector.py --carpark Narrabeen
 
 # Check all carparks
-python parking_graphql.py --all
+python run_collector.py --all
 ```
 
 ### Continuous Monitoring
 
 ```bash
 # Monitor every 60 seconds (default)
-python parking_graphql.py --loop --carpark Narrabeen
+python run_collector.py --loop --carpark Narrabeen
 
 # Custom interval (e.g., 15 seconds)
-python parking_graphql.py --loop --carpark Narrabeen --interval 15
+python run_collector.py --loop --carpark Narrabeen --interval 15
 
 # With live-updating chart
-python parking_graphql.py --loop --carpark Narrabeen --chart
+python run_collector.py --loop --carpark Narrabeen --chart
 ```
 
 ### Visualization
 
 ```bash
 # View last 24 hours
-python parking_graphql.py --visualize --carpark Narrabeen --hours 24
+python run_collector.py --visualize --carpark Narrabeen --hours 24
 
 # View daily patterns (last 7 days)
-python parking_graphql.py --visualize --carpark Narrabeen --pattern --hours 168
+python run_collector.py --visualize --carpark Narrabeen --pattern --hours 168
 
 # Save chart to file
-python parking_graphql.py --visualize --carpark Narrabeen --output chart.png
+python run_collector.py --visualize --carpark Narrabeen --output chart.png
 ```
 
 ### Export Data
 
 ```bash
 # Export to CSV
-python parking_graphql.py --export --carpark Narrabeen --output data.csv
+python run_collector.py --export --carpark Narrabeen --output data.csv
 ```
 
 ### Web Dashboard
@@ -108,7 +108,7 @@ Dashboard features:
 
 ## Available Carparks
 
-Run `python parking_graphql.py --all` to see all available Park&Ride locations:
+Run `python run_collector.py --all` to see all available Park&Ride locations:
 
 - Narrabeen, Dee Why, Brookvale, Manly Vale, Mona Vale, Warriewood
 - Bella Vista, Cherrybrook, Hills Showground, Kellyville, Tallawong
@@ -119,23 +119,28 @@ Run `python parking_graphql.py --all` to see all available Park&Ride locations:
 
 ```
 park_ride/
-├── parking_graphql.py     # Main script (GraphQL version)
-├── parking_storage.py     # SQLite database module
-├── parking_visualize.py   # Chart visualization (matplotlib)
-├── run_dashboard.py       # Web dashboard entry point
-├── dashboard/             # Flask web dashboard
+├── run_collector.py        # Data collector entry point
+├── run_dashboard.py        # Web dashboard entry point
+├── parkride/               # Main Python package
+│   ├── __init__.py
+│   ├── collector.py        # GraphQL data fetcher
+│   ├── storage.py          # SQLite database module
+│   ├── visualize.py        # Chart visualization (matplotlib)
+│   └── legacy.py           # Playwright fallback
+├── dashboard/              # Flask web dashboard
 │   ├── __init__.py
 │   ├── app.py
 │   ├── api.py
 │   ├── config.py
 │   ├── templates/
 │   └── static/
-├── parking_query.py       # Original Playwright version (fallback)
-├── parking_data.db        # SQLite database (auto-created)
-├── dashboard_config.json  # Dashboard configuration (auto-created)
-├── requirements.txt       # Dependencies
-├── TECHNICAL_DESIGN.md    # Technical documentation
-└── shortcuts_guide.md     # iOS Shortcuts setup guide
+├── docs/                   # Documentation
+│   ├── TECHNICAL_DESIGN.md
+│   └── shortcuts_guide.md
+├── parking_data.db         # SQLite database (auto-created)
+├── dashboard_config.json   # Dashboard config (auto-created)
+├── requirements.txt        # Dependencies
+└── README.md
 ```
 
 ## Requirements
@@ -186,4 +191,4 @@ MIT
 
 ## Contributing
 
-Contributions welcome! See [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) for architecture details.
+Contributions welcome! See [docs/TECHNICAL_DESIGN.md](docs/TECHNICAL_DESIGN.md) for architecture details.

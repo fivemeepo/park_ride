@@ -1,162 +1,44 @@
 #!/usr/bin/env python3
 """
-Transport NSW Park&Ride Parking Availability Checker (GraphQL Version)
+Park&Ride Data Collector
 
-This script uses the Transport NSW GraphQL API to query real-time
-parking availability at Park&Ride car parks. Much faster and lighter
-than the Playwright-based approach.
+Collects parking availability data from Transport NSW GraphQL API
+and stores it in SQLite database.
 
 Usage:
-    python3 parking_graphql.py                           # Query Narrabeen once
-    python3 parking_graphql.py --loop                    # Query continuously (15s interval)
-    python3 parking_graphql.py --loop --chart            # With live chart
-    python3 parking_graphql.py --carpark Narrabeen       # Specify car park
-    python3 parking_graphql.py --all                     # Show all car parks
-    python3 parking_graphql.py --visualize --hours 24    # View historical chart
+    python run_collector.py                        # Query Narrabeen once
+    python run_collector.py --loop                 # Query continuously (60s interval)
+    python run_collector.py --loop --chart         # With live chart
+    python run_collector.py --carpark Narrabeen    # Specify car park
+    python run_collector.py --all                  # Show all car parks
+    python run_collector.py --visualize --hours 24 # View historical chart
 
 First time setup:
-    pip install requests matplotlib pandas
+    pip install -r requirements.txt
 """
 
 import time
 import argparse
-import os
 import signal
 import sys
+import os
 from datetime import datetime
 from typing import Optional
 
-import requests
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from parking_storage import ParkingDatabase
-
-# GraphQL API configuration
-GRAPHQL_ENDPOINT = "https://transportnsw.info/api/graphql"
-GRAPHQL_QUERY = """query getLocations {
-    result: widgets {
-        pnrLocations {
-            name
-            spots
-            occupancy
-        }
-    }
-}"""
+from parkride.storage import ParkingDatabase
+from parkride.collector import (
+    fetch_parking_data, fetch_with_retry, filter_carpark,
+    display_availability, log, send_notification
+)
 
 DEFAULT_INTERVAL = 60  # seconds
 DEFAULT_DB_PATH = "parking_data.db"
 
 # Global flag for graceful shutdown
 running = True
-
-
-def log(message: str):
-    """Print message with timestamp."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] {message}")
-
-
-def send_notification(title: str, message: str):
-    """Send macOS system notification."""
-    try:
-        os.system(f"""osascript -e 'display notification "{message}" with title "{title}"'""")
-    except Exception:
-        pass  # Silently fail on non-macOS systems
-
-
-def fetch_parking_data(timeout: int = 30) -> list[dict]:
-    """
-    Fetch parking data from Transport NSW GraphQL API.
-
-    Args:
-        timeout: Request timeout in seconds
-
-    Returns:
-        List of dicts with keys: name, spots, occupancy, available, timestamp
-    """
-    payload = {
-        "operationName": "getLocations",
-        "query": GRAPHQL_QUERY,
-        "variables": {}
-    }
-
-    response = requests.post(
-        GRAPHQL_ENDPOINT,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=timeout
-    )
-    response.raise_for_status()
-
-    data = response.json()
-    locations = data["data"]["result"]["pnrLocations"]
-    timestamp = datetime.now()
-
-    return [
-        {
-            "name": loc["name"].replace("Park&Ride - ", ""),
-            "spots": loc["spots"],
-            "occupancy": loc["occupancy"],
-            "available": loc["spots"] - loc["occupancy"],
-            "timestamp": timestamp
-        }
-        for loc in locations
-    ]
-
-
-def fetch_with_retry(max_retries: int = 3) -> Optional[list[dict]]:
-    """
-    Fetch parking data with exponential backoff retry.
-
-    Args:
-        max_retries: Maximum number of retry attempts
-
-    Returns:
-        List of parking data dicts, or None if all retries fail
-    """
-    retry_delays = [5, 15, 30]
-
-    for attempt in range(max_retries):
-        try:
-            return fetch_parking_data()
-        except requests.RequestException as e:
-            if attempt < max_retries - 1:
-                delay = retry_delays[attempt]
-                log(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
-                time.sleep(delay)
-            else:
-                log(f"All {max_retries} attempts failed: {e}")
-                return None
-
-
-def filter_carpark(data: list[dict], carpark_name: str) -> list[dict]:
-    """Filter parking data by carpark name (partial match)."""
-    return [d for d in data if carpark_name.lower() in d["name"].lower()]
-
-
-def display_availability(data: list[dict]):
-    """Display parking availability in a formatted way."""
-    if not data:
-        log("No car parks found.")
-        return
-
-    print("=" * 50)
-    print("Park&Ride Parking Availability")
-    print("=" * 50)
-
-    for item in sorted(data, key=lambda x: x["name"]):
-        spaces = item["available"]
-        if spaces == 0:
-            status = "FULL"
-        elif spaces < 0:
-            status = "Unavailable"
-        elif spaces < 20:
-            status = f"{spaces} spaces (low)"
-        else:
-            status = f"{spaces} spaces"
-
-        print(f"  {item['name']}: {status}")
-
-    print("=" * 50)
 
 
 def check_and_notify(
@@ -167,25 +49,14 @@ def check_and_notify(
 ) -> Optional[int]:
     """
     Check parking availability and send notification if spaces available.
-
-    Args:
-        carpark_name: Name of car park to check
-        threshold: Minimum spaces to trigger notification
-        notify: Whether to send system notification
-        db: Optional database for storing reading
-
-    Returns:
-        Number of available spaces, or None if not found
     """
     data = fetch_with_retry()
     if data is None:
         return None
 
-    # Store all readings if database provided
     if db:
         db.insert_readings(data)
 
-    # Filter to specific carpark
     filtered = filter_carpark(data, carpark_name)
 
     if not filtered:
@@ -215,18 +86,7 @@ def run_continuous_monitor(
     db: ParkingDatabase,
     show_chart: bool = False
 ):
-    """
-    Run continuous monitoring loop.
-
-    Args:
-        carpark_name: Carpark to monitor (or None for all)
-        interval: Polling interval in seconds
-        threshold: Notification threshold
-        notify: Whether to send notifications
-        show_all: Whether to display all carparks
-        db: Database for storing readings
-        show_chart: Whether to show live chart
-    """
+    """Run continuous monitoring loop."""
     global running
 
     def signal_handler(sig, frame):
@@ -243,18 +103,15 @@ def run_continuous_monitor(
     else:
         log("Tracking: All carparks")
 
-    # Start live chart if requested
     chart = None
     if show_chart and carpark_name:
         try:
-            from parking_visualize import LiveChart
+            from parkride.visualize import LiveChart
             import matplotlib
-            matplotlib.use('TkAgg')  # Use interactive backend
+            matplotlib.use('TkAgg')
             import matplotlib.pyplot as plt
 
             chart = LiveChart(db, carpark_name, hours_to_show=2, update_interval=interval * 1000)
-
-            # Run chart in non-blocking mode
             plt.ion()
             chart.fig.show()
         except Exception as e:
@@ -274,7 +131,6 @@ def run_continuous_monitor(
             else:
                 check_and_notify(carpark_name, threshold, notify, db)
 
-            # Update chart
             if chart:
                 try:
                     chart._update(iteration)
@@ -283,7 +139,6 @@ def run_continuous_monitor(
                 except Exception:
                     pass
 
-            # Sleep in small increments for responsive shutdown
             for _ in range(interval * 10):
                 if not running:
                     break
@@ -306,7 +161,7 @@ def show_visualization(
 ):
     """Show historical visualization."""
     try:
-        from parking_visualize import plot_availability, plot_daily_pattern
+        from parkride.visualize import plot_availability, plot_daily_pattern
 
         if pattern:
             plot_daily_pattern(db, carpark, days=hours // 24 or 7, output=output)
@@ -319,7 +174,7 @@ def show_visualization(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Check Park&Ride parking availability (GraphQL version)"
+        description="Park&Ride Data Collector - Fetch and store parking availability"
     )
     parser.add_argument(
         "--carpark", "-c", type=str, default="Narrabeen",
@@ -376,22 +231,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Initialize database
     db = ParkingDatabase(args.db)
 
     try:
         if args.visualize:
-            # Show historical visualization
             show_visualization(db, args.carpark, args.hours, args.output, args.pattern)
 
         elif args.export:
-            # Export to CSV
             output_file = args.output or f"parking_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             db.export_to_csv(output_file, carpark=args.carpark, hours=args.hours)
             log(f"Data exported to {output_file}")
 
         elif args.loop:
-            # Continuous monitoring
             run_continuous_monitor(
                 carpark_name=None if args.all else args.carpark,
                 interval=args.interval,
@@ -403,7 +254,6 @@ def main():
             )
 
         else:
-            # Single query
             log("Checking parking availability...")
             if args.all:
                 data = fetch_with_retry()
