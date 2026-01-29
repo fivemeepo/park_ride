@@ -9,46 +9,57 @@ This document describes the technical design for querying Transport NSW Park&Rid
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        User Interface                           │
-│                    (CLI / matplotlib chart)                     │
+│              (CLI / matplotlib / Web Dashboard)                 │
+└─────────────────────────────────────────────────────────────────┘
+            │                    │                    │
+            ▼                    ▼                    ▼
+┌───────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
+│ parking_graphql.py│  │parking_visualize│  │  dashboard/ (Flask) │
+│  (Data Collector) │  │   (matplotlib)  │  │  (Web Dashboard)    │
+│ - GraphQL fetch   │  │ - LiveChart     │  │ - REST API          │
+│ - 60s polling     │  │ - Static charts │  │ - Chart.js frontend │
+│ - Notifications   │  │ - Patterns      │  │ - Config persistence│
+└───────────────────┘  └─────────────────┘  └─────────────────────┘
+            │                    │                    │
+            ▼                    ▼                    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      parking_storage.py                         │
+│                     (SQLite Data Layer)                         │
+│  - CRUD operations  - Time-based queries  - CSV export          │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     parking_graphql.py                          │
-│                      (Main Entry Point)                         │
-│  - CLI argument parsing                                         │
-│  - GraphQL API fetching                                         │
-│  - Continuous monitoring loop                                   │
-│  - macOS notifications                                          │
+│                       parking_data.db                           │
+│                      (SQLite Database)                          │
 └─────────────────────────────────────────────────────────────────┘
-                    │                   │
-                    ▼                   ▼
-┌───────────────────────────┐  ┌───────────────────────────────────┐
-│   parking_storage.py      │  │     parking_visualize.py          │
-│   (Data Persistence)      │  │     (Chart Generation)            │
-│  - SQLite CRUD operations │  │  - LiveChart (auto-refresh)       │
-│  - Time-based queries     │  │  - Static historical charts       │
-│  - CSV export             │  │  - Daily pattern analysis         │
-└───────────────────────────┘  └───────────────────────────────────┘
-            │                              │
-            ▼                              │
-┌───────────────────────────┐              │
-│    parking_data.db        │◄─────────────┘
-│    (SQLite Database)      │
-└───────────────────────────┘
 ```
 
 ## File Structure
 
 ```
 park_ride/
-├── parking_graphql.py     # Main script - GraphQL API client
-├── parking_storage.py     # SQLite database module
-├── parking_visualize.py   # Visualization module
-├── parking_query.py       # Original Playwright version (fallback)
-├── parking_data.db        # SQLite database (auto-created)
-├── requirements.txt       # Python dependencies
-├── venv/                  # Virtual environment
+├── parking_graphql.py      # Data collector - GraphQL API client
+├── parking_storage.py      # SQLite database module
+├── parking_visualize.py    # Visualization module (matplotlib)
+├── run_dashboard.py        # Web dashboard entry point
+├── dashboard/              # Flask web dashboard
+│   ├── __init__.py         # App factory
+│   ├── app.py              # Main routes
+│   ├── api.py              # REST API endpoints
+│   ├── config.py           # Config file handler
+│   ├── templates/
+│   │   └── index.html      # Dashboard HTML
+│   └── static/
+│       ├── css/
+│       │   └── dashboard.css
+│       └── js/
+│           └── dashboard.js  # Chart.js integration
+├── parking_query.py        # Original Playwright version (fallback)
+├── parking_data.db         # SQLite database (auto-created)
+├── dashboard_config.json   # Dashboard config (auto-created)
+├── requirements.txt        # Python dependencies
+├── venv/                   # Virtual environment
 └── .gitignore
 ```
 
@@ -216,6 +227,63 @@ def plot_daily_pattern(db, carpark, days, output, show)
 def plot_comparison(db, carparks, hours, output, show)
 ```
 
+### 4. Web Dashboard (dashboard/)
+
+Flask-based web application for browser-based visualization.
+
+#### REST API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/carparks` | GET | List all carpark names |
+| `/api/readings?carpark=X,Y&hours=24` | GET | Historical data for charts |
+| `/api/latest?carpark=X,Y` | GET | Current availability |
+| `/api/config` | GET | Load dashboard config |
+| `/api/config` | POST | Save dashboard config |
+
+#### Frontend Components
+
+- **Chart.js** - Interactive line charts with time axis
+- **Auto-refresh** - Polls API every 60 seconds
+- **Multi-select** - Choose multiple carparks per chart
+- **Preset time ranges** - 1h, 6h, 24h, 48h, 7d
+
+#### Configuration File (dashboard_config.json)
+
+```json
+{
+    "version": 1,
+    "settings": {
+        "autoRefresh": true,
+        "refreshInterval": 60
+    },
+    "charts": [
+        {
+            "id": "chart-1",
+            "title": "Narrabeen",
+            "carparks": ["Narrabeen"],
+            "hours": 24
+        }
+    ]
+}
+```
+
+#### Dashboard CLI
+
+```bash
+# Start dashboard (default: localhost:5000)
+python run_dashboard.py
+
+# Custom port
+python run_dashboard.py --port 8080
+
+# Debug mode
+python run_dashboard.py --debug
+
+# Custom database path
+python run_dashboard.py --db /path/to/parking_data.db
+```
+
 ## Performance
 
 | Metric | Playwright | GraphQL |
@@ -235,19 +303,20 @@ def plot_comparison(db, carparks, hours, output, show)
 
 ```
 requests>=2.28.0      # HTTP client for GraphQL API
-matplotlib>=3.7.0     # Chart generation
+matplotlib>=3.7.0     # Chart generation (CLI)
 pandas>=2.0.0         # Data manipulation (optional)
+flask>=3.0.0          # Web dashboard
 playwright            # Fallback web scraping (original version)
 ```
 
 ## Future Enhancements
 
-- [ ] Web dashboard for remote monitoring
+- [x] Web dashboard for visualization (implemented)
+- [x] Multiple carpark comparison charts (implemented)
 - [ ] Push notifications (iOS/Android)
 - [ ] Predictive availability based on historical patterns
-- [ ] Multiple carpark comparison charts
 - [ ] Alert rules configuration
-- [ ] REST API wrapper for external integrations
+- [ ] User authentication for dashboard
 
 ## Troubleshooting
 
