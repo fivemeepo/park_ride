@@ -16,20 +16,20 @@
     },
     {
       "carparks": [
-        "Manly Vale"
-      ],
-      "id": "chart-1769657127655",
-      "title": "Manly Vale"
-    },
-    {
-      "carparks": [
         "Warriewood"
       ],
       "id": "chart-1769657160099",
       "title": "Warriewood"
+    },
+    {
+      "carparks": [
+        "Manly Vale"
+      ],
+      "id": "chart-1769657127655",
+      "title": "Manly Vale"
     }
   ],
-  "lastModified": "2026-01-29T19:43:40.277593",
+  "lastModified": "2026-01-29T21:15:20.508488",
   "settings": {
     "autoRefresh": true,
     "refreshInterval": 60,
