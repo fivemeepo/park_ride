@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Park&Ride Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <h1>Park&Ride Dashboard</h1>
+            <div class="header-actions">
+                <button id="add-chart-btn" class="btn btn-primary">+ Add Chart</button>
+            </div>
+        </header>
+
+        <!-- Charts Grid -->
+        <main class="charts-grid" id="charts-container">
+            <!-- Charts will be dynamically added here -->
+        </main>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-item">
+                <label>
+                    <input type="checkbox" id="auto-refresh-toggle" checked>
+                    Auto-refresh
+                </label>
+                <span id="refresh-interval">(60s)</span>
+            </div>
+            <div class="status-item">
+                Last updated: <span id="last-updated">-</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Add/Edit Chart Modal -->
+    <div class="modal" id="chart-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add Chart</h2>
+                <button class="close-btn" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="chart-title">Chart Title</label>
+                    <input type="text" id="chart-title" placeholder="e.g., Narrabeen Parking">
+                </div>
+                <div class="form-group">
+                    <label for="carpark-select">Carparks</label>
+                    <select id="carpark-select" multiple size="8">
+                        <!-- Options populated dynamically -->
+                    </select>
+                    <small>Hold Ctrl/Cmd to select multiple</small>
+                </div>
+                <div class="form-group">
+                    <label for="time-range">Time Range</label>
+                    <select id="time-range">
+                        <option value="1">Last 1 hour</option>
+                        <option value="6">Last 6 hours</option>
+                        <option value="24" selected>Last 24 hours</option>
+                        <option value="48">Last 48 hours</option>
+                        <option value="168">Last 7 days</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State Template -->
+    <template id="empty-state-template">
+        <div class="empty-state">
+            <p>No charts configured yet.</p>
+            <p>Click "Add Chart" to get started!</p>
+        </div>
+    </template>
+
+    <!-- Chart Card Template -->
+    <template id="chart-card-template">
+        <div class="chart-card" data-chart-id="">
+            <div class="chart-header">
+                <h3 class="chart-title"></h3>
+                <div class="chart-actions">
+                    <button class="btn-icon edit-btn" title="Edit">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button class="btn-icon remove-btn" title="Remove">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas></canvas>
+            </div>
+            <div class="chart-footer">
+                <span class="chart-info"></span>
+            </div>
+        </div>
+    </template>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

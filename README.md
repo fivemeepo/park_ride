@@ -7,6 +7,7 @@ Real-time parking availability checker for Transport NSW Park&Ride car parks wit
 - **Fast GraphQL API** - Queries in ~0.2s (vs 5-10s with web scraping)
 - **60-second polling** - Continuous monitoring with configurable interval
 - **Data persistence** - SQLite storage for historical analysis
+- **Web dashboard** - Interactive browser-based visualization
 - **Live charts** - Auto-refreshing matplotlib visualization
 - **macOS notifications** - Alerts when parking becomes available
 - **CSV export** - Export data for external analysis
@@ -72,6 +73,22 @@ python parking_graphql.py --visualize --carpark Narrabeen --output chart.png
 python parking_graphql.py --export --carpark Narrabeen --output data.csv
 ```
 
+### Web Dashboard
+
+```bash
+# Start the web dashboard
+python run_dashboard.py
+
+# Open http://localhost:5000 in your browser
+```
+
+Dashboard features:
+- Add multiple charts to track different carparks
+- Select single or multiple carparks per chart
+- Choose time range: 1h, 6h, 24h, 48h, or 7 days
+- Auto-refresh every 60 seconds
+- Configuration persists across sessions
+
 ## CLI Options
 
 | Option | Short | Default | Description |
@@ -104,9 +121,18 @@ Run `python parking_graphql.py --all` to see all available Park&Ride locations:
 park_ride/
 ├── parking_graphql.py     # Main script (GraphQL version)
 ├── parking_storage.py     # SQLite database module
-├── parking_visualize.py   # Chart visualization
+├── parking_visualize.py   # Chart visualization (matplotlib)
+├── run_dashboard.py       # Web dashboard entry point
+├── dashboard/             # Flask web dashboard
+│   ├── __init__.py
+│   ├── app.py
+│   ├── api.py
+│   ├── config.py
+│   ├── templates/
+│   └── static/
 ├── parking_query.py       # Original Playwright version (fallback)
 ├── parking_data.db        # SQLite database (auto-created)
+├── dashboard_config.json  # Dashboard configuration (auto-created)
 ├── requirements.txt       # Dependencies
 ├── TECHNICAL_DESIGN.md    # Technical documentation
 └── shortcuts_guide.md     # iOS Shortcuts setup guide
@@ -115,7 +141,7 @@ park_ride/
 ## Requirements
 
 - Python 3.10+
-- Dependencies: `requests`, `matplotlib`, `pandas`
+- Dependencies: `requests`, `matplotlib`, `pandas`, `flask`
 
 ## Installation
 
