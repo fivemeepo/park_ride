@@ -42,7 +42,7 @@ GRAPHQL_QUERY = """query getLocations {
     }
 }"""
 
-DEFAULT_INTERVAL = 15  # seconds
+DEFAULT_INTERVAL = 60  # seconds
 DEFAULT_DB_PATH = "parking_data.db"
 
 # Global flag for graceful shutdown

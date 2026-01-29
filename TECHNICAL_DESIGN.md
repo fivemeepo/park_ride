@@ -54,7 +54,7 @@ park_ride/
 
 ## Data Flow
 
-1. **Fetch**: `parking_graphql.py` queries Transport NSW GraphQL API
+1. **Fetch**: `parking_graphql.py` queries Transport NSW GraphQL API every 60s (default)
 2. **Parse**: Response parsed to extract carpark name, total spots, occupancy
 3. **Calculate**: Available spots = total spots - occupancy
 4. **Store**: Readings saved to SQLite via `parking_storage.py`
@@ -126,13 +126,13 @@ query getLocations {
 # Single query
 python parking_graphql.py --carpark Narrabeen
 
-# Continuous monitoring (15s default interval)
+# Continuous monitoring (60s default interval)
 python parking_graphql.py --loop --carpark Narrabeen
 
 # With live-updating chart
 python parking_graphql.py --loop --carpark Narrabeen --chart
 
-# Custom interval
+# Custom interval (e.g., 15 seconds)
 python parking_graphql.py --loop --interval 15 --carpark Narrabeen
 
 # Show all carparks
@@ -154,7 +154,7 @@ python parking_graphql.py --export --carpark Narrabeen --output data.csv
 |----------|-------|---------|-------------|
 | --carpark | -c | Narrabeen | Carpark name to monitor |
 | --loop | -l | false | Run continuously |
-| --interval | -i | 15 | Polling interval (seconds) |
+| --interval | -i | 60 | Polling interval (seconds) |
 | --all | -a | false | Show all carparks |
 | --threshold | -t | 1 | Notification threshold |
 | --no-notify | | false | Disable notifications |
@@ -207,7 +207,7 @@ class ParkingDatabase:
 ```python
 class LiveChart:
     """Auto-refreshing matplotlib chart for real-time monitoring."""
-    def __init__(db, carpark, hours_to_show=2, update_interval=15000)
+    def __init__(db, carpark, hours_to_show=2, update_interval=60000)
     def start()  # Begin animation
     def stop()   # Stop animation
 
@@ -228,7 +228,7 @@ def plot_comparison(db, carparks, hours, output, show)
 ## Data Retention
 
 - Default: Keep all data indefinitely
-- At 15s intervals: ~5,760 readings/day, ~175MB/year
+- At 60s intervals: ~1,440 readings/day, ~44MB/year
 - Optional cleanup: `db.cleanup_old_data(days_to_keep=90)`
 
 ## Dependencies

@@ -5,7 +5,7 @@ Real-time parking availability checker for Transport NSW Park&Ride car parks wit
 ## Features
 
 - **Fast GraphQL API** - Queries in ~0.2s (vs 5-10s with web scraping)
-- **15-second polling** - Continuous monitoring with configurable interval
+- **60-second polling** - Continuous monitoring with configurable interval
 - **Data persistence** - SQLite storage for historical analysis
 - **Live charts** - Auto-refreshing matplotlib visualization
 - **macOS notifications** - Alerts when parking becomes available
@@ -42,11 +42,11 @@ python parking_graphql.py --all
 ### Continuous Monitoring
 
 ```bash
-# Monitor every 15 seconds (default)
+# Monitor every 60 seconds (default)
 python parking_graphql.py --loop --carpark Narrabeen
 
-# Custom interval (e.g., 30 seconds)
-python parking_graphql.py --loop --carpark Narrabeen --interval 30
+# Custom interval (e.g., 15 seconds)
+python parking_graphql.py --loop --carpark Narrabeen --interval 15
 
 # With live-updating chart
 python parking_graphql.py --loop --carpark Narrabeen --chart
@@ -78,7 +78,7 @@ python parking_graphql.py --export --carpark Narrabeen --output data.csv
 |--------|-------|---------|-------------|
 | `--carpark` | `-c` | Narrabeen | Carpark name to monitor |
 | `--loop` | `-l` | - | Run continuously |
-| `--interval` | `-i` | 15 | Polling interval in seconds |
+| `--interval` | `-i` | 60 | Polling interval in seconds |
 | `--all` | `-a` | - | Show all carparks |
 | `--threshold` | `-t` | 1 | Min spaces for notification |
 | `--no-notify` | - | - | Disable notifications |
@@ -152,7 +152,7 @@ Data is stored in `parking_data.db` (SQLite):
 - Carpark name
 - Total spots, occupancy, available spaces
 
-At 15-second intervals: ~5,760 readings/day per carpark.
+At 60-second intervals: ~1,440 readings/day per carpark.
 
 ## License
 
