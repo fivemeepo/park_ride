@@ -11,6 +11,7 @@ class DashboardApp {
         this.lastAutoTitle = '';    // Track last auto-generated title
         this.datePicker = null;     // Flatpickr instance
         this.customDateRange = null; // { start, end } for custom range
+        this.draggedChartId = null; // Currently dragged chart ID
 
         // Chart colors palette
         this.colors = [
@@ -102,18 +103,29 @@ class DashboardApp {
 
     // --- UI Methods ---
 
-    populateCarparksList() {
+    populateCarparksList(selectedCarparks = []) {
         const listContainer = document.getElementById('carpark-list');
         listContainer.innerHTML = '';
-        this.carparks.forEach(carpark => {
+
+        const selectedSet = new Set(selectedCarparks);
+        const sortedCarparks = [...this.carparks].sort((a, b) => {
+            const aSelected = selectedSet.has(a);
+            const bSelected = selectedSet.has(b);
+            if (aSelected && !bSelected) return -1;
+            if (!aSelected && bSelected) return 1;
+            return a.localeCompare(b);
+        });
+
+        sortedCarparks.forEach(carpark => {
             const label = document.createElement('label');
             label.className = 'carpark-item';
             label.innerHTML = `
-                <input type="checkbox" value="${carpark}">
+                <input type="checkbox" value="${carpark}" ${selectedSet.has(carpark) ? 'checked' : ''}>
                 <span class="carpark-name">${carpark}</span>
             `;
             listContainer.appendChild(label);
         });
+        this.updateSelectedCount();
     }
 
     filterCarparksList(searchTerm) {
@@ -316,6 +328,7 @@ class DashboardApp {
 
         const cardElement = card.querySelector('.chart-card');
         cardElement.dataset.chartId = chartConfig.id;
+        cardElement.setAttribute('draggable', 'true');
 
         card.querySelector('.chart-title').textContent = chartConfig.title;
 
@@ -499,8 +512,8 @@ class DashboardApp {
         document.getElementById('modal-title').textContent = 'Add Chart';
         document.getElementById('chart-title').value = '';
         document.getElementById('carpark-search').value = '';
+        this.populateCarparksList([]);
         this.filterCarparksList('');
-        this.setSelectedCarparks([]);
         document.getElementById('chart-modal').classList.add('active');
     }
 
@@ -513,9 +526,8 @@ class DashboardApp {
         document.getElementById('modal-title').textContent = 'Edit Chart';
         document.getElementById('chart-title').value = chartConfig.title;
         document.getElementById('carpark-search').value = '';
+        this.populateCarparksList(chartConfig.carparks);
         this.filterCarparksList('');
-        this.setSelectedCarparks(chartConfig.carparks);
-
         document.getElementById('chart-modal').classList.add('active');
     }
 
@@ -624,9 +636,93 @@ class DashboardApp {
         this.startAutoRefresh();
     }
 
+    // --- Drag and Drop ---
+
+    handleDragStart(e) {
+        const card = e.target.closest('.chart-card');
+        if (!card) return;
+
+        this.draggedChartId = card.dataset.chartId;
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+    }
+
+    handleDragEnd(e) {
+        const card = e.target.closest('.chart-card');
+        if (card) {
+            card.classList.remove('dragging');
+        }
+        this.draggedChartId = null;
+
+        // Remove drag-over class from all cards
+        document.querySelectorAll('.chart-card.drag-over').forEach(c => {
+            c.classList.remove('drag-over');
+        });
+    }
+
+    handleDragOver(e) {
+        e.preventDefault();
+        const card = e.target.closest('.chart-card');
+        if (card && card.dataset.chartId !== this.draggedChartId) {
+            card.classList.add('drag-over');
+        }
+    }
+
+    handleDragLeave(e) {
+        const card = e.target.closest('.chart-card');
+        if (card) {
+            card.classList.remove('drag-over');
+        }
+    }
+
+    handleDrop(e) {
+        e.preventDefault();
+        const targetCard = e.target.closest('.chart-card');
+        if (!targetCard || !this.draggedChartId) return;
+
+        const targetId = targetCard.dataset.chartId;
+        if (targetId !== this.draggedChartId) {
+            this.reorderCharts(this.draggedChartId, targetId);
+        }
+
+        targetCard.classList.remove('drag-over');
+    }
+
+    reorderCharts(draggedId, targetId) {
+        const charts = this.config.charts;
+        const draggedIndex = charts.findIndex(c => c.id === draggedId);
+        const targetIndex = charts.findIndex(c => c.id === targetId);
+
+        if (draggedIndex === -1 || targetIndex === -1) return;
+
+        // Remove dragged chart and insert at target position
+        const [draggedChart] = charts.splice(draggedIndex, 1);
+        charts.splice(targetIndex, 0, draggedChart);
+
+        this.saveConfig();
+
+        // Destroy all chart instances before re-rendering
+        Object.keys(this.charts).forEach(chartId => {
+            if (this.charts[chartId]) {
+                this.charts[chartId].destroy();
+                delete this.charts[chartId];
+            }
+        });
+
+        this.renderCharts();
+    }
+
     // --- Event Listeners ---
 
     setupEventListeners() {
+        // Drag and drop for chart reordering
+        const chartsContainer = document.getElementById('charts-container');
+        chartsContainer.addEventListener('dragstart', (e) => this.handleDragStart(e));
+        chartsContainer.addEventListener('dragend', (e) => this.handleDragEnd(e));
+        chartsContainer.addEventListener('dragover', (e) => this.handleDragOver(e));
+        chartsContainer.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+        chartsContainer.addEventListener('drop', (e) => this.handleDrop(e));
+
         // Add chart button
         document.getElementById('add-chart-btn').addEventListener('click', () => {
             this.openAddModal();

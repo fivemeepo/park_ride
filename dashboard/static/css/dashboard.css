@@ -166,6 +166,23 @@ body {
     overflow: hidden;
 }
 
+.chart-card[draggable="true"] {
+    cursor: grab;
+}
+
+.chart-card[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.chart-card.dragging {
+    opacity: 0.5;
+}
+
+.chart-card.drag-over {
+    outline: 2px dashed var(--primary-color);
+    outline-offset: 4px;
+}
+
 .chart-header {
     padding: 1rem;
     display: flex;
