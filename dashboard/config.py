@@ -11,11 +11,12 @@ from typing import Optional
 
 
 DEFAULT_CONFIG = {
-    "version": 1,
+    "version": 2,
     "lastModified": None,
     "settings": {
         "autoRefresh": True,
-        "refreshInterval": 60
+        "refreshInterval": 60,
+        "timeRange": 24
     },
     "charts": []
 }
@@ -27,6 +28,38 @@ class DashboardConfig:
     def __init__(self, config_path: str = "dashboard_config.json"):
         self.config_path = config_path
 
+    def _migrate_v1_to_v2(self, config: dict) -> dict:
+        """
+        Migrate config from version 1 to version 2.
+
+        Version 2 changes:
+        - Move per-chart 'hours' to global 'settings.timeRange'
+        - Remove 'hours' from individual chart configs
+        """
+        # Get the most common hours value from charts, default to 24
+        hours_values = [c.get('hours', 24) for c in config.get('charts', [])]
+        if hours_values:
+            # Use the most common value
+            time_range = max(set(hours_values), key=hours_values.count)
+        else:
+            time_range = 24
+
+        # Ensure settings exists
+        if 'settings' not in config:
+            config['settings'] = {}
+
+        # Add timeRange to settings
+        config['settings']['timeRange'] = time_range
+
+        # Remove hours from individual charts
+        for chart in config.get('charts', []):
+            chart.pop('hours', None)
+
+        # Update version
+        config['version'] = 2
+
+        return config
+
     def load(self) -> dict:
         """Load configuration from file, creating default if not exists."""
         if not os.path.exists(self.config_path):
@@ -35,10 +68,23 @@ class DashboardConfig:
         try:
             with open(self.config_path, 'r') as f:
                 config = json.load(f)
+
                 # Ensure all required keys exist
                 for key in DEFAULT_CONFIG:
                     if key not in config:
                         config[key] = DEFAULT_CONFIG[key]
+
+                # Handle version migration
+                version = config.get('version', 1)
+                if version < 2:
+                    config = self._migrate_v1_to_v2(config)
+                    # Save migrated config
+                    self.save(config)
+
+                # Ensure settings has timeRange
+                if 'timeRange' not in config.get('settings', {}):
+                    config['settings']['timeRange'] = 24
+
                 return config
         except (json.JSONDecodeError, IOError):
             return DEFAULT_CONFIG.copy()

@@ -13,7 +13,15 @@
         <!-- Header -->
         <header class="header">
             <h1>Park&Ride Dashboard</h1>
-            <div class="header-actions">
+            <div class="header-controls">
+                <div class="time-range-selector">
+                    <span class="time-range-label">Time Range:</span>
+                    <button class="time-btn" data-hours="1">1h</button>
+                    <button class="time-btn" data-hours="6">6h</button>
+                    <button class="time-btn active" data-hours="24">24h</button>
+                    <button class="time-btn" data-hours="48">48h</button>
+                    <button class="time-btn" data-hours="168">7d</button>
+                </div>
                 <button id="add-chart-btn" class="btn btn-primary">+ Add Chart</button>
             </div>
         </header>
@@ -51,21 +59,15 @@
                     <input type="text" id="chart-title" placeholder="e.g., Narrabeen Parking">
                 </div>
                 <div class="form-group">
-                    <label for="carpark-select">Carparks</label>
-                    <select id="carpark-select" multiple size="8">
-                        <!-- Options populated dynamically -->
-                    </select>
-                    <small>Hold Ctrl/Cmd to select multiple</small>
-                </div>
-                <div class="form-group">
-                    <label for="time-range">Time Range</label>
-                    <select id="time-range">
-                        <option value="1">Last 1 hour</option>
-                        <option value="6">Last 6 hours</option>
-                        <option value="24" selected>Last 24 hours</option>
-                        <option value="48">Last 48 hours</option>
-                        <option value="168">Last 7 days</option>
-                    </select>
+                    <label>Carparks</label>
+                    <div class="carpark-search-container">
+                        <input type="text" id="carpark-search" placeholder="Search carparks...">
+                        <button type="button" id="clear-search" class="clear-search-btn" title="Clear search">&times;</button>
+                    </div>
+                    <div id="carpark-list" class="carpark-list">
+                        <!-- Dynamically populated with checkboxes -->
+                    </div>
+                    <small id="selected-count">0 selected</small>
                 </div>
             </div>
             <div class="modal-footer">

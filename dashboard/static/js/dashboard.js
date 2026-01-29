@@ -8,6 +8,7 @@ class DashboardApp {
         this.config = null;         // Dashboard configuration
         this.refreshTimer = null;   // Auto-refresh timer
         this.editingChartId = null; // Currently editing chart ID
+        this.lastAutoTitle = '';    // Track last auto-generated title
 
         // Chart colors palette
         this.colors = [
@@ -23,6 +24,7 @@ class DashboardApp {
         this.setupEventListeners();
         this.startAutoRefresh();
         this.updateLastUpdated();
+        this.updateTimeRangeButtons();
     }
 
     // --- API Methods ---
@@ -32,7 +34,7 @@ class DashboardApp {
             const response = await fetch('/api/carparks');
             const data = await response.json();
             this.carparks = data.carparks || [];
-            this.populateCarparksSelect();
+            this.populateCarparksList();
         } catch (error) {
             console.error('Failed to load carparks:', error);
             this.carparks = [];
@@ -43,11 +45,15 @@ class DashboardApp {
         try {
             const response = await fetch('/api/config');
             this.config = await response.json();
+            // Ensure settings has timeRange (migration from v1)
+            if (!this.config.settings.timeRange) {
+                this.config.settings.timeRange = 24;
+            }
         } catch (error) {
             console.error('Failed to load config:', error);
             this.config = {
-                version: 1,
-                settings: { autoRefresh: true, refreshInterval: 60 },
+                version: 2,
+                settings: { autoRefresh: true, refreshInterval: 60, timeRange: 24 },
                 charts: []
             };
         }
@@ -80,15 +86,135 @@ class DashboardApp {
 
     // --- UI Methods ---
 
-    populateCarparksSelect() {
-        const select = document.getElementById('carpark-select');
-        select.innerHTML = '';
+    populateCarparksList() {
+        const listContainer = document.getElementById('carpark-list');
+        listContainer.innerHTML = '';
         this.carparks.forEach(carpark => {
-            const option = document.createElement('option');
-            option.value = carpark;
-            option.textContent = carpark;
-            select.appendChild(option);
+            const label = document.createElement('label');
+            label.className = 'carpark-item';
+            label.innerHTML = `
+                <input type="checkbox" value="${carpark}">
+                <span class="carpark-name">${carpark}</span>
+            `;
+            listContainer.appendChild(label);
         });
+    }
+
+    filterCarparksList(searchTerm) {
+        const items = document.querySelectorAll('.carpark-item');
+        const term = searchTerm.toLowerCase();
+        items.forEach(item => {
+            const name = item.querySelector('.carpark-name').textContent.toLowerCase();
+            item.style.display = name.includes(term) ? '' : 'none';
+        });
+    }
+
+    getSelectedCarparks() {
+        const checkboxes = document.querySelectorAll('#carpark-list input[type="checkbox"]:checked');
+        return Array.from(checkboxes).map(cb => cb.value);
+    }
+
+    setSelectedCarparks(carparks) {
+        const checkboxes = document.querySelectorAll('#carpark-list input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            cb.checked = carparks.includes(cb.value);
+        });
+        this.updateSelectedCount();
+    }
+
+    updateSelectedCount() {
+        const count = this.getSelectedCarparks().length;
+        document.getElementById('selected-count').textContent = `${count} selected`;
+    }
+
+    generateAutoTitle() {
+        const selected = this.getSelectedCarparks();
+        return selected.join(', ');
+    }
+
+    updateAutoTitle() {
+        const titleInput = document.getElementById('chart-title');
+        const currentTitle = titleInput.value.trim();
+
+        // Only auto-fill if title is empty or matches previous auto-generated value
+        if (currentTitle === '' || currentTitle === this.lastAutoTitle) {
+            const newTitle = this.generateAutoTitle();
+            titleInput.value = newTitle;
+            this.lastAutoTitle = newTitle;
+        }
+    }
+
+    getTimeRangeLabel(hours) {
+        if (hours === 1) return 'Last 1 hour';
+        if (hours === 6) return 'Last 6 hours';
+        if (hours === 24) return 'Last 24 hours';
+        if (hours === 48) return 'Last 48 hours';
+        if (hours === 168) return 'Last 7 days';
+        return `Last ${hours} hours`;
+    }
+
+    getTimeConfig(hours) {
+        // Return adaptive time unit configuration based on range
+        if (hours <= 1) {
+            return {
+                unit: 'minute',
+                displayFormats: {
+                    minute: 'HH:mm'
+                },
+                stepSize: 5
+            };
+        } else if (hours <= 6) {
+            return {
+                unit: 'hour',
+                displayFormats: {
+                    hour: 'HH:mm'
+                },
+                stepSize: 1
+            };
+        } else if (hours <= 48) {
+            return {
+                unit: 'hour',
+                displayFormats: {
+                    hour: 'MMM d, HH:mm'
+                },
+                stepSize: hours <= 24 ? 4 : 8
+            };
+        } else {
+            return {
+                unit: 'day',
+                displayFormats: {
+                    day: 'EEE MMM d'
+                },
+                stepSize: 1
+            };
+        }
+    }
+
+    updateTimeRangeButtons() {
+        const hours = this.config.settings.timeRange || 24;
+        document.querySelectorAll('.time-btn').forEach(btn => {
+            const btnHours = parseInt(btn.dataset.hours);
+            btn.classList.toggle('active', btnHours === hours);
+        });
+    }
+
+    setGlobalTimeRange(hours) {
+        this.config.settings.timeRange = hours;
+        this.saveConfig();
+        this.updateTimeRangeButtons();
+
+        // Update all chart x-axis configurations and refresh
+        Object.keys(this.charts).forEach(chartId => {
+            const chart = this.charts[chartId];
+            const timeConfig = this.getTimeConfig(hours);
+
+            chart.options.scales.x.time.unit = timeConfig.unit;
+            chart.options.scales.x.time.displayFormats = timeConfig.displayFormats;
+            chart.options.scales.x.time.stepSize = timeConfig.stepSize;
+            chart.options.scales.x.title.text = this.getTimeRangeLabel(hours);
+        });
+
+        this.refreshAllCharts();
     }
 
     renderCharts() {
@@ -139,6 +265,8 @@ class DashboardApp {
         if (!canvas) return;
 
         const ctx = canvas.getContext('2d');
+        const hours = this.config.settings.timeRange || 24;
+        const timeConfig = this.getTimeConfig(hours);
 
         const datasets = chartConfig.carparks.map((carpark, index) => ({
             label: carpark,
@@ -146,8 +274,10 @@ class DashboardApp {
             borderColor: this.colors[index % this.colors.length],
             backgroundColor: this.colors[index % this.colors.length] + '20',
             fill: chartConfig.carparks.length === 1,
-            tension: 0.1,
-            pointRadius: 2
+            tension: 0.3,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            borderWidth: 2
         }));
 
         this.charts[chartConfig.id] = new Chart(ctx, {
@@ -156,6 +286,9 @@ class DashboardApp {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 300
+                },
                 interaction: {
                     mode: 'index',
                     intersect: false
@@ -164,14 +297,25 @@ class DashboardApp {
                     x: {
                         type: 'time',
                         time: {
-                            unit: chartConfig.hours <= 6 ? 'hour' : 'day',
-                            displayFormats: {
-                                hour: 'HH:mm',
-                                day: 'MMM d HH:mm'
-                            }
+                            unit: timeConfig.unit,
+                            displayFormats: timeConfig.displayFormats,
+                            stepSize: timeConfig.stepSize
                         },
                         title: {
-                            display: false
+                            display: true,
+                            text: this.getTimeRangeLabel(hours),
+                            color: '#666',
+                            font: {
+                                size: 11
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        },
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 8
                         }
                     },
                     y: {
@@ -179,6 +323,9 @@ class DashboardApp {
                         title: {
                             display: true,
                             text: 'Available Spots'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
                         }
                     }
                 },
@@ -189,7 +336,27 @@ class DashboardApp {
                     },
                     tooltip: {
                         mode: 'index',
-                        intersect: false
+                        intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: {
+                            size: 13
+                        },
+                        bodyFont: {
+                            size: 12
+                        },
+                        padding: 10,
+                        callbacks: {
+                            title: function(tooltipItems) {
+                                if (tooltipItems.length > 0) {
+                                    const date = new Date(tooltipItems[0].parsed.x);
+                                    return date.toLocaleString();
+                                }
+                                return '';
+                            },
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y} spots`;
+                            }
+                        }
                     }
                 }
             }
@@ -204,7 +371,8 @@ class DashboardApp {
         const chart = this.charts[chartId];
         if (!chartConfig || !chart) return;
 
-        const readings = await this.fetchReadings(chartConfig.carparks, chartConfig.hours);
+        const hours = this.config.settings.timeRange || 24;
+        const readings = await this.fetchReadings(chartConfig.carparks, hours);
 
         chartConfig.carparks.forEach((carpark, index) => {
             const carparkReadings = readings[carpark] || [];
@@ -214,7 +382,7 @@ class DashboardApp {
             }));
         });
 
-        chart.update('none');
+        chart.update();
 
         // Update chart info
         const card = document.querySelector(`[data-chart-id="${chartId}"]`);
@@ -247,10 +415,12 @@ class DashboardApp {
 
     openAddModal() {
         this.editingChartId = null;
+        this.lastAutoTitle = '';
         document.getElementById('modal-title').textContent = 'Add Chart';
         document.getElementById('chart-title').value = '';
-        document.getElementById('carpark-select').selectedIndex = -1;
-        document.getElementById('time-range').value = '24';
+        document.getElementById('carpark-search').value = '';
+        this.filterCarparksList('');
+        this.setSelectedCarparks([]);
         document.getElementById('chart-modal').classList.add('active');
     }
 
@@ -259,15 +429,12 @@ class DashboardApp {
         if (!chartConfig) return;
 
         this.editingChartId = chartId;
+        this.lastAutoTitle = chartConfig.carparks.join(', ');
         document.getElementById('modal-title').textContent = 'Edit Chart';
         document.getElementById('chart-title').value = chartConfig.title;
-        document.getElementById('time-range').value = chartConfig.hours.toString();
-
-        // Select carparks
-        const select = document.getElementById('carpark-select');
-        Array.from(select.options).forEach(option => {
-            option.selected = chartConfig.carparks.includes(option.value);
-        });
+        document.getElementById('carpark-search').value = '';
+        this.filterCarparksList('');
+        this.setSelectedCarparks(chartConfig.carparks);
 
         document.getElementById('chart-modal').classList.add('active');
     }
@@ -275,13 +442,12 @@ class DashboardApp {
     closeModal() {
         document.getElementById('chart-modal').classList.remove('active');
         this.editingChartId = null;
+        this.lastAutoTitle = '';
     }
 
     saveModal() {
         const title = document.getElementById('chart-title').value.trim();
-        const select = document.getElementById('carpark-select');
-        const selectedCarparks = Array.from(select.selectedOptions).map(o => o.value);
-        const hours = parseInt(document.getElementById('time-range').value);
+        const selectedCarparks = this.getSelectedCarparks();
 
         if (!title) {
             alert('Please enter a chart title');
@@ -297,16 +463,14 @@ class DashboardApp {
             // Update existing chart
             this.updateChart(this.editingChartId, {
                 title,
-                carparks: selectedCarparks,
-                hours
+                carparks: selectedCarparks
             });
         } else {
             // Add new chart
             this.addChart({
                 id: `chart-${Date.now()}`,
                 title,
-                carparks: selectedCarparks,
-                hours
+                carparks: selectedCarparks
             });
         }
 
@@ -411,6 +575,33 @@ class DashboardApp {
         // Auto-refresh toggle
         document.getElementById('auto-refresh-toggle').addEventListener('change', () => {
             this.toggleAutoRefresh();
+        });
+
+        // Carpark search
+        document.getElementById('carpark-search').addEventListener('input', (e) => {
+            this.filterCarparksList(e.target.value);
+        });
+
+        // Clear search button
+        document.getElementById('clear-search').addEventListener('click', () => {
+            document.getElementById('carpark-search').value = '';
+            this.filterCarparksList('');
+        });
+
+        // Carpark checkbox changes
+        document.getElementById('carpark-list').addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') {
+                this.updateSelectedCount();
+                this.updateAutoTitle();
+            }
+        });
+
+        // Time range buttons
+        document.querySelectorAll('.time-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const hours = parseInt(btn.dataset.hours);
+                this.setGlobalTimeRange(hours);
+            });
         });
 
         // Keyboard shortcuts

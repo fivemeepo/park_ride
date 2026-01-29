@@ -1,18 +1,39 @@
 {
   "charts": [
     {
-      "id": "chart-1769654954406",
-      "title": "Narrabeen",
       "carparks": [
         "Narrabeen"
       ],
-      "hours": 24
+      "id": "chart-1769654954406",
+      "title": "Narrabeen"
+    },
+    {
+      "id": "chart-1769657108911",
+      "title": "Dee Why",
+      "carparks": [
+        "Dee Why"
+      ]
+    },
+    {
+      "id": "chart-1769657127655",
+      "title": "Manly Vale",
+      "carparks": [
+        "Manly Vale"
+      ]
+    },
+    {
+      "id": "chart-1769657160099",
+      "title": "Warriewood",
+      "carparks": [
+        "Warriewood"
+      ]
     }
   ],
-  "lastModified": "2026-01-29T13:49:14.415533",
+  "lastModified": "2026-01-29T14:26:00.104597",
   "settings": {
     "autoRefresh": true,
-    "refreshInterval": 60
+    "refreshInterval": 60,
+    "timeRange": 6
   },
-  "version": 1
+  "version": 2
 }
