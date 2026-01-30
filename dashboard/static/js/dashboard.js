@@ -12,6 +12,8 @@ class DashboardApp {
         this.datePicker = null;     // Flatpickr instance
         this.customDateRange = null; // { start, end } for custom range
         this.draggedChartId = null; // Currently dragged chart ID
+        this.resizing = null;       // Resize state { chartId, startX, startWidth }
+        this.gridColumnWidth = 0;   // Calculated column width in pixels
 
         // Chart colors palette
         this.colors = [
@@ -75,6 +77,8 @@ class DashboardApp {
             if (!this.config.settings.timeRange) {
                 this.config.settings.timeRange = 24;
             }
+            // Migrate charts to include layout if missing
+            this.migrateChartLayouts();
         } catch (error) {
             console.error('Failed to load config:', error);
             this.config = {
@@ -83,6 +87,60 @@ class DashboardApp {
                 charts: []
             };
         }
+    }
+
+    migrateChartLayouts() {
+        // Assign layout to charts that don't have one
+        let row = 0;
+        let col = 0;
+        this.config.charts.forEach(chart => {
+            if (!chart.layout) {
+                chart.layout = { row, col: 0, width: 12 };
+                row++;
+            }
+        });
+        // Normalize to ensure no overlaps
+        this.normalizeLayout();
+    }
+
+    normalizeLayout() {
+        // Sort charts by row then column
+        const charts = this.config.charts.slice();
+        charts.sort((a, b) => {
+            const aLayout = a.layout || { row: 0, col: 0, width: 12 };
+            const bLayout = b.layout || { row: 0, col: 0, width: 12 };
+            if (aLayout.row !== bLayout.row) return aLayout.row - bLayout.row;
+            return aLayout.col - bLayout.col;
+        });
+
+        // Reflow charts to remove gaps and prevent overlaps
+        let currentRow = 0;
+        let currentCol = 0;
+
+        charts.forEach(chart => {
+            const layout = chart.layout || { row: 0, col: 0, width: 12 };
+            const width = layout.width || 12;
+
+            // If chart doesn't fit on current row, move to next
+            if (currentCol + width > 12) {
+                currentRow++;
+                currentCol = 0;
+            }
+
+            layout.row = currentRow;
+            layout.col = currentCol;
+            chart.layout = layout;
+
+            currentCol += width;
+            // If row is full, move to next
+            if (currentCol >= 12) {
+                currentRow++;
+                currentCol = 0;
+            }
+        });
+
+        // Update config with sorted charts
+        this.config.charts = charts;
     }
 
     async saveConfig() {
@@ -332,6 +390,9 @@ class DashboardApp {
         const container = document.getElementById('charts-container');
         container.innerHTML = '';
 
+        // Calculate grid column width for resize calculations
+        this.calculateGridColumnWidth();
+
         if (this.config.charts.length === 0) {
             const template = document.getElementById('empty-state-template');
             container.appendChild(template.content.cloneNode(true));
@@ -343,6 +404,15 @@ class DashboardApp {
         });
     }
 
+    calculateGridColumnWidth() {
+        const container = document.getElementById('charts-container');
+        if (container) {
+            const containerWidth = container.clientWidth - 48; // 1.5rem * 2 padding
+            const gap = 24; // 1.5rem gap
+            this.gridColumnWidth = (containerWidth - (11 * gap)) / 12;
+        }
+    }
+
     createChartCard(chartConfig) {
         const container = document.getElementById('charts-container');
         const template = document.getElementById('chart-card-template');
@@ -351,6 +421,12 @@ class DashboardApp {
         const cardElement = card.querySelector('.chart-card');
         cardElement.dataset.chartId = chartConfig.id;
         cardElement.setAttribute('draggable', 'true');
+
+        // Apply layout
+        const layout = chartConfig.layout || { row: 0, col: 0, width: 12 };
+        cardElement.dataset.width = layout.width;
+        cardElement.style.gridRow = layout.row + 1;
+        cardElement.style.gridColumn = `${layout.col + 1} / span ${layout.width}`;
 
         card.querySelector('.chart-title').textContent = chartConfig.title;
 
@@ -365,6 +441,12 @@ class DashboardApp {
         card.querySelector('.remove-btn').addEventListener('click', () => {
             this.removeChart(chartConfig.id);
         });
+
+        // Add resize handle
+        const resizeHandle = document.createElement('div');
+        resizeHandle.className = 'resize-handle';
+        resizeHandle.addEventListener('mousedown', (e) => this.startResize(e, chartConfig.id));
+        cardElement.appendChild(resizeHandle);
 
         container.appendChild(card);
 
@@ -548,6 +630,7 @@ class DashboardApp {
         document.getElementById('modal-title').textContent = 'Add Chart';
         document.getElementById('chart-title').value = '';
         document.getElementById('chart-type').value = 'available_spots';
+        document.getElementById('chart-width').value = '12';
         document.getElementById('carpark-search').value = '';
         this.populateCarparksList([]);
         this.filterCarparksList('');
@@ -563,6 +646,7 @@ class DashboardApp {
         document.getElementById('modal-title').textContent = 'Edit Chart';
         document.getElementById('chart-title').value = chartConfig.title;
         document.getElementById('chart-type').value = chartConfig.chartType || 'available_spots';
+        document.getElementById('chart-width').value = chartConfig.layout?.width?.toString() || '12';
         document.getElementById('carpark-search').value = '';
         this.populateCarparksList(chartConfig.carparks);
         this.filterCarparksList('');
@@ -578,6 +662,7 @@ class DashboardApp {
     saveModal() {
         const title = document.getElementById('chart-title').value.trim();
         const chartType = document.getElementById('chart-type').value;
+        const chartWidth = parseInt(document.getElementById('chart-width').value);
         const selectedCarparks = this.getSelectedCarparks();
 
         if (!title) {
@@ -592,18 +677,24 @@ class DashboardApp {
 
         if (this.editingChartId) {
             // Update existing chart
+            const chartConfig = this.config.charts.find(c => c.id === this.editingChartId);
+            const currentLayout = chartConfig?.layout || { row: 0, col: 0, width: 12 };
             this.updateChart(this.editingChartId, {
                 title,
                 chartType,
-                carparks: selectedCarparks
+                carparks: selectedCarparks,
+                layout: { ...currentLayout, width: chartWidth }
             });
         } else {
-            // Add new chart
+            // Add new chart - place at end with full width
+            const lastChart = this.config.charts[this.config.charts.length - 1];
+            const newRow = lastChart ? (lastChart.layout?.row || 0) + 1 : 0;
             this.addChart({
                 id: `chart-${Date.now()}`,
                 title,
                 chartType,
-                carparks: selectedCarparks
+                carparks: selectedCarparks,
+                layout: { row: newRow, col: 0, width: chartWidth }
             });
         }
 
@@ -614,6 +705,7 @@ class DashboardApp {
 
     addChart(chartConfig) {
         this.config.charts.push(chartConfig);
+        this.normalizeLayout();
         this.saveConfig();
         this.renderCharts();
     }
@@ -623,6 +715,7 @@ class DashboardApp {
         if (!chartConfig) return;
 
         Object.assign(chartConfig, updates);
+        this.normalizeLayout();
         this.saveConfig();
 
         // Destroy and recreate chart
@@ -740,6 +833,8 @@ class DashboardApp {
         const [draggedChart] = charts.splice(draggedIndex, 1);
         charts.splice(targetIndex, 0, draggedChart);
 
+        // Normalize layout after reorder
+        this.normalizeLayout();
         this.saveConfig();
 
         // Destroy all chart instances before re-rendering
@@ -751,6 +846,95 @@ class DashboardApp {
         });
 
         this.renderCharts();
+    }
+
+    // --- Resize Functionality ---
+
+    startResize(e, chartId) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        this.calculateGridColumnWidth();
+
+        const chartConfig = this.config.charts.find(c => c.id === chartId);
+        if (!chartConfig) return;
+
+        const layout = chartConfig.layout || { row: 0, col: 0, width: 12 };
+
+        this.resizing = {
+            chartId,
+            startX: e.clientX,
+            startWidth: layout.width,
+            currentWidth: layout.width,
+            minWidth: 3,
+            maxWidth: 12 - layout.col
+        };
+
+        const handle = e.target;
+        handle.classList.add('resizing');
+
+        document.addEventListener('mousemove', this.handleResize);
+        document.addEventListener('mouseup', this.endResize);
+    }
+
+    handleResize = (e) => {
+        if (!this.resizing) return;
+
+        const deltaX = e.clientX - this.resizing.startX;
+        const columnWidth = this.gridColumnWidth + 24; // Include gap
+        const deltaColumns = Math.round(deltaX / columnWidth);
+
+        let newWidth = this.resizing.startWidth + deltaColumns;
+        newWidth = Math.max(this.resizing.minWidth, Math.min(this.resizing.maxWidth, newWidth));
+
+        // Only update if width changed
+        if (newWidth !== this.resizing.currentWidth) {
+            this.resizing.currentWidth = newWidth;
+
+            // Update visual width
+            const card = document.querySelector(`[data-chart-id="${this.resizing.chartId}"]`);
+            if (card) {
+                card.dataset.width = newWidth;
+                const chartConfig = this.config.charts.find(c => c.id === this.resizing.chartId);
+                if (chartConfig) {
+                    const layout = chartConfig.layout || { row: 0, col: 0, width: 12 };
+                    card.style.gridColumn = `${layout.col + 1} / span ${newWidth}`;
+                }
+
+                // Resize the Chart.js instance smoothly
+                if (this.charts[this.resizing.chartId]) {
+                    this.charts[this.resizing.chartId].resize();
+                }
+            }
+        }
+    }
+
+    endResize = (e) => {
+        if (!this.resizing) return;
+
+        const newWidth = this.resizing.currentWidth || this.resizing.startWidth;
+
+        // Update config
+        const chartConfig = this.config.charts.find(c => c.id === this.resizing.chartId);
+        if (chartConfig && chartConfig.layout) {
+            chartConfig.layout.width = newWidth;
+            this.saveConfig();
+        }
+
+        // Remove resizing class
+        document.querySelectorAll('.resize-handle.resizing').forEach(h => {
+            h.classList.remove('resizing');
+        });
+
+        const resizingChartId = this.resizing.chartId;
+        this.resizing = null;
+        document.removeEventListener('mousemove', this.handleResize);
+        document.removeEventListener('mouseup', this.endResize);
+
+        // Final resize to ensure chart fits properly
+        if (this.charts[resizingChartId]) {
+            this.charts[resizingChartId].resize();
+        }
     }
 
     // --- Event Listeners ---
@@ -829,6 +1013,11 @@ class DashboardApp {
             if (e.key === 'Escape') {
                 this.closeModal();
             }
+        });
+
+        // Recalculate grid column width on window resize
+        window.addEventListener('resize', () => {
+            this.calculateGridColumnWidth();
         });
     }
 }
