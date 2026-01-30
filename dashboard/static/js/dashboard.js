@@ -18,6 +18,28 @@ class DashboardApp {
             '#2196F3', '#4CAF50', '#FF9800', '#E91E63',
             '#9C27B0', '#00BCD4', '#FF5722', '#607D8B'
         ];
+
+        // Chart type configurations
+        this.chartTypes = {
+            available_spots: {
+                yAxisTitle: 'Available Spots',
+                getValue: (r) => r.available,
+                formatTooltip: (value, total) => `${value}/${total} spots`,
+                formatInfo: (latest) => `${latest.available}/${latest.total_spots}`,
+                yAxisConfig: { beginAtZero: true }
+            },
+            vacancy_rate: {
+                yAxisTitle: 'Vacancy Rate (%)',
+                getValue: (r) => r.total_spots > 0 ? (r.available / r.total_spots) * 100 : 0,
+                formatTooltip: (value) => `${value.toFixed(1)}%`,
+                formatInfo: (latest) => {
+                    const rate = latest.total_spots > 0
+                        ? ((latest.available / latest.total_spots) * 100).toFixed(1) : 0;
+                    return `${rate}%`;
+                },
+                yAxisConfig: { beginAtZero: true, max: 100 }
+            }
+        };
     }
 
     async init() {
@@ -357,6 +379,8 @@ class DashboardApp {
         const ctx = canvas.getContext('2d');
         const hours = this.config.settings.timeRange || 24;
         const timeConfig = this.getTimeConfig(hours);
+        const chartType = chartConfig.chartType || 'available_spots';
+        const typeConfig = this.chartTypes[chartType];
 
         const datasets = chartConfig.carparks.map((carpark, index) => ({
             label: carpark,
@@ -369,6 +393,24 @@ class DashboardApp {
             pointHoverRadius: 4,
             borderWidth: 2
         }));
+
+        // Build y-axis config
+        const yAxisConfig = {
+            beginAtZero: typeConfig.yAxisConfig.beginAtZero,
+            title: {
+                display: true,
+                text: typeConfig.yAxisTitle
+            },
+            grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
+            }
+        };
+        if (typeConfig.yAxisConfig.max !== undefined) {
+            yAxisConfig.max = typeConfig.yAxisConfig.max;
+            yAxisConfig.ticks = {
+                callback: (v) => v + '%'
+            };
+        }
 
         this.charts[chartConfig.id] = new Chart(ctx, {
             type: 'line',
@@ -408,16 +450,7 @@ class DashboardApp {
                             maxTicksLimit: 8
                         }
                     },
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Available Spots'
-                        },
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.05)'
-                        }
-                    }
+                    y: yAxisConfig
                 },
                 plugins: {
                     legend: {
@@ -443,9 +476,10 @@ class DashboardApp {
                                 }
                                 return '';
                             },
-                            label: function(context) {
+                            label: (context) => {
+                                const value = context.parsed.y;
                                 const total = context.raw.total || '-';
-                                return `${context.dataset.label}: ${context.parsed.y}/${total} spots`;
+                                return `${context.dataset.label}: ${typeConfig.formatTooltip(value, total)}`;
                             }
                         }
                     }
@@ -464,12 +498,14 @@ class DashboardApp {
 
         const hours = this.config.settings.timeRange || 24;
         const readings = await this.fetchReadings(chartConfig.carparks, hours);
+        const chartType = chartConfig.chartType || 'available_spots';
+        const typeConfig = this.chartTypes[chartType];
 
         chartConfig.carparks.forEach((carpark, index) => {
             const carparkReadings = readings[carpark] || [];
             chart.data.datasets[index].data = carparkReadings.map(r => ({
                 x: new Date(r.timestamp),
-                y: r.available,
+                y: typeConfig.getValue(r),
                 total: r.total_spots
             }));
         });
@@ -484,7 +520,7 @@ class DashboardApp {
                 const data = readings[carpark] || [];
                 if (data.length > 0) {
                     const latest = data[data.length - 1];
-                    return `${carpark}: ${latest.available}/${latest.total_spots}`;
+                    return `${carpark}: ${typeConfig.formatInfo(latest)}`;
                 }
                 return `${carpark}: -`;
             });
@@ -511,6 +547,7 @@ class DashboardApp {
         this.lastAutoTitle = '';
         document.getElementById('modal-title').textContent = 'Add Chart';
         document.getElementById('chart-title').value = '';
+        document.getElementById('chart-type').value = 'available_spots';
         document.getElementById('carpark-search').value = '';
         this.populateCarparksList([]);
         this.filterCarparksList('');
@@ -525,6 +562,7 @@ class DashboardApp {
         this.lastAutoTitle = chartConfig.carparks.join(', ');
         document.getElementById('modal-title').textContent = 'Edit Chart';
         document.getElementById('chart-title').value = chartConfig.title;
+        document.getElementById('chart-type').value = chartConfig.chartType || 'available_spots';
         document.getElementById('carpark-search').value = '';
         this.populateCarparksList(chartConfig.carparks);
         this.filterCarparksList('');
@@ -539,6 +577,7 @@ class DashboardApp {
 
     saveModal() {
         const title = document.getElementById('chart-title').value.trim();
+        const chartType = document.getElementById('chart-type').value;
         const selectedCarparks = this.getSelectedCarparks();
 
         if (!title) {
@@ -555,6 +594,7 @@ class DashboardApp {
             // Update existing chart
             this.updateChart(this.editingChartId, {
                 title,
+                chartType,
                 carparks: selectedCarparks
             });
         } else {
@@ -562,6 +602,7 @@ class DashboardApp {
             this.addChart({
                 id: `chart-${Date.now()}`,
                 title,
+                chartType,
                 carparks: selectedCarparks
             });
         }
