@@ -36,6 +36,32 @@
             </div>
         </header>
 
+        <!-- Insights Section -->
+        <section class="insights-section collapsed" id="insights-section">
+            <div class="insights-header" id="insights-toggle">
+                <div class="insights-header-left">
+                    <span class="collapse-icon">▶</span>
+                    <h2>Insights</h2>
+                </div>
+                <div class="insights-actions">
+                    <button id="generate-insight-btn" class="btn btn-primary">
+                        <span class="btn-text">Generate Insight</span>
+                        <span class="btn-loading" style="display: none;">
+                            <span class="spinner"></span> Analyzing...
+                        </span>
+                    </button>
+                    <button id="toggle-insights-history" class="btn btn-text">View History</button>
+                </div>
+            </div>
+            <div class="insights-body">
+                <div class="insights-card" id="latest-insight">
+                    <div class="insight-empty">
+                        <p>No insights generated yet. Click "Generate Insight" to analyze your parking data.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Charts Grid -->
         <main class="charts-grid" id="charts-container">
             <!-- Charts will be dynamically added here -->
@@ -140,6 +166,28 @@
             </div>
         </div>
     </template>
+
+    <!-- Insights History Modal -->
+    <div class="modal" id="insights-history-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Insights History</h2>
+                <button class="close-btn" id="insights-history-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="insights-history-list" class="insights-history-list">
+                    <!-- Dynamically populated -->
+                </div>
+                <div id="insights-history-empty" class="empty-state" style="display: none;">
+                    <p>No insights have been generated yet.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="load-more-insights" style="display: none;">Load More</button>
+                <button class="btn" id="insights-history-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
 
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 </body>

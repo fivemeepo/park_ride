@@ -6,6 +6,7 @@ Provides persistent storage for historical parking readings with
 efficient querying capabilities for analysis and visualization.
 """
 
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -26,6 +27,7 @@ class ParkingDatabase:
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._create_tables()
+        self._create_insights_table()
 
     def _create_tables(self):
         """Create database tables and indexes if they don't exist."""
@@ -47,6 +49,26 @@ class ParkingDatabase:
             self.conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_timestamp
                 ON parking_readings(timestamp)
+            """)
+
+    def _create_insights_table(self):
+        """Create insights table if it doesn't exist."""
+        with self.conn:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS insights (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at DATETIME NOT NULL,
+                    insight_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    data_range_start DATETIME,
+                    data_range_end DATETIME,
+                    metadata TEXT
+                )
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_insights_created_at
+                ON insights(created_at DESC)
             """)
 
     def insert_readings(self, readings: list[dict]):
@@ -187,6 +209,75 @@ class ParkingDatabase:
                     'occupancy': r['occupancy'],
                     'available': r['available']
                 })
+
+    def insert_insight(self, insight: dict) -> int:
+        """
+        Insert a new insight into the database.
+
+        Args:
+            insight: Dict with keys: insight_type, title, content, data_range_start,
+                     data_range_end, metadata (optional)
+
+        Returns:
+            The ID of the newly inserted insight
+        """
+        with self.conn:
+            cursor = self.conn.execute(
+                """INSERT INTO insights
+                   (created_at, insight_type, title, content, data_range_start, data_range_end, metadata)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    insight["insight_type"],
+                    insight["title"],
+                    insight["content"],
+                    insight.get("data_range_start"),
+                    insight.get("data_range_end"),
+                    json.dumps(insight.get("metadata")) if insight.get("metadata") else None
+                )
+            )
+            return cursor.lastrowid
+
+    def get_latest_insight(self) -> Optional[dict]:
+        """Get the most recent insight."""
+        cursor = self.conn.execute(
+            """SELECT * FROM insights ORDER BY created_at DESC LIMIT 1"""
+        )
+        row = cursor.fetchone()
+        if row:
+            result = dict(row)
+            if result.get("metadata"):
+                result["metadata"] = json.loads(result["metadata"])
+            return result
+        return None
+
+    def get_insights(self, limit: int = 10, offset: int = 0) -> list[dict]:
+        """
+        Get paginated list of insights.
+
+        Args:
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of insight dicts
+        """
+        cursor = self.conn.execute(
+            """SELECT * FROM insights ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (limit, offset)
+        )
+        results = []
+        for row in cursor.fetchall():
+            result = dict(row)
+            if result.get("metadata"):
+                result["metadata"] = json.loads(result["metadata"])
+            results.append(result)
+        return results
+
+    def get_insights_count(self) -> int:
+        """Get total count of insights."""
+        cursor = self.conn.execute("SELECT COUNT(*) FROM insights")
+        return cursor.fetchone()[0]
 
     def close(self):
         """Close database connection."""

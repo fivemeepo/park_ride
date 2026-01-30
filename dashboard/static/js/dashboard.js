@@ -14,6 +14,8 @@ class DashboardApp {
         this.draggedChartId = null; // Currently dragged chart ID
         this.resizing = null;       // Resize state { chartId, startX, startWidth }
         this.gridColumnWidth = 0;   // Calculated column width in pixels
+        this.insightsOffset = 0;    // Pagination offset for insights history
+        this.insightsLimit = 10;    // Page size for insights history
 
         // Chart colors palette
         this.colors = [
@@ -49,10 +51,12 @@ class DashboardApp {
         await this.loadConfig();
         this.renderCharts();
         this.setupEventListeners();
+        this.setupInsightsEventListeners();
         this.initDatePicker();
         this.startAutoRefresh();
         this.updateLastUpdated();
         this.updateTimeRangeDropdown();
+        this.loadLatestInsight();
     }
 
     // --- API Methods ---
@@ -768,6 +772,200 @@ class DashboardApp {
         this.config.settings.autoRefresh = enabled;
         this.saveConfig();
         this.startAutoRefresh();
+    }
+
+    // --- Insights Methods ---
+
+    async loadLatestInsight() {
+        try {
+            const response = await fetch('/api/insights/latest');
+            const data = await response.json();
+            if (data.insight) {
+                this.renderLatestInsight(data.insight);
+            }
+        } catch (error) {
+            console.error('Failed to load latest insight:', error);
+        }
+    }
+
+    async generateInsight() {
+        this.setGeneratingState(true);
+        try {
+            const hours = this.config.settings.timeRange || 24;
+            const response = await fetch('/api/insights/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'daily_summary', hours })
+            });
+            const data = await response.json();
+            if (data.error) {
+                this.renderInsightError(data.error);
+            } else if (data.insight) {
+                this.renderLatestInsight(data.insight);
+            }
+        } catch (error) {
+            console.error('Failed to generate insight:', error);
+            this.renderInsightError('Failed to connect to the server. Please try again.');
+        } finally {
+            this.setGeneratingState(false);
+        }
+    }
+
+    renderLatestInsight(insight) {
+        const container = document.getElementById('latest-insight');
+        const createdAt = insight.created_at ? new Date(insight.created_at).toLocaleString() : 'Just now';
+        const rangeStart = insight.data_range_start ? new Date(insight.data_range_start).toLocaleString() : '-';
+        const rangeEnd = insight.data_range_end ? new Date(insight.data_range_end).toLocaleString() : '-';
+
+        // Convert content paragraphs
+        const contentHtml = insight.content
+            .split('\n\n')
+            .filter(p => p.trim())
+            .map(p => `<p>${this.escapeHtml(p)}</p>`)
+            .join('');
+
+        container.innerHTML = `
+            <div class="insight-content">
+                <span class="insight-type">${this.escapeHtml(insight.insight_type.replace('_', ' '))}</span>
+                <h3 class="insight-title">${this.escapeHtml(insight.title)}</h3>
+                <div class="insight-text">${contentHtml}</div>
+                <div class="insight-meta">
+                    <span>Generated: ${createdAt}</span>
+                    <span>Data range: ${rangeStart} - ${rangeEnd}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    renderInsightError(message) {
+        const container = document.getElementById('latest-insight');
+        container.innerHTML = `
+            <div class="insight-error">
+                <p><strong>Error:</strong> ${this.escapeHtml(message)}</p>
+            </div>
+        `;
+    }
+
+    setGeneratingState(isGenerating) {
+        const btn = document.getElementById('generate-insight-btn');
+        const textSpan = btn.querySelector('.btn-text');
+        const loadingSpan = btn.querySelector('.btn-loading');
+        btn.disabled = isGenerating;
+        textSpan.style.display = isGenerating ? 'none' : 'inline';
+        loadingSpan.style.display = isGenerating ? 'inline-flex' : 'none';
+    }
+
+    async loadInsightsHistory(reset = false) {
+        if (reset) {
+            this.insightsOffset = 0;
+        }
+
+        try {
+            const response = await fetch(
+                `/api/insights?limit=${this.insightsLimit}&offset=${this.insightsOffset}`
+            );
+            const data = await response.json();
+
+            const listContainer = document.getElementById('insights-history-list');
+            const emptyState = document.getElementById('insights-history-empty');
+            const loadMoreBtn = document.getElementById('load-more-insights');
+
+            if (reset) {
+                listContainer.innerHTML = '';
+            }
+
+            if (data.insights.length === 0 && this.insightsOffset === 0) {
+                listContainer.style.display = 'none';
+                emptyState.style.display = 'block';
+                loadMoreBtn.style.display = 'none';
+                return;
+            }
+
+            listContainer.style.display = 'block';
+            emptyState.style.display = 'none';
+
+            data.insights.forEach(insight => {
+                const item = document.createElement('div');
+                item.className = 'insights-history-item';
+                item.innerHTML = `
+                    <span class="insight-type">${this.escapeHtml(insight.insight_type.replace('_', ' '))}</span>
+                    <h4 class="insight-title">${this.escapeHtml(insight.title)}</h4>
+                    <p class="insight-preview">${this.escapeHtml(insight.content.substring(0, 150))}...</p>
+                    <span class="insight-date">${new Date(insight.created_at).toLocaleString()}</span>
+                `;
+                item.addEventListener('click', () => {
+                    this.renderLatestInsight(insight);
+                    this.closeInsightsHistoryModal();
+                });
+                listContainer.appendChild(item);
+            });
+
+            this.insightsOffset += data.insights.length;
+            loadMoreBtn.style.display = data.hasMore ? 'block' : 'none';
+        } catch (error) {
+            console.error('Failed to load insights history:', error);
+        }
+    }
+
+    openInsightsHistoryModal() {
+        this.loadInsightsHistory(true);
+        document.getElementById('insights-history-modal').classList.add('active');
+    }
+
+    closeInsightsHistoryModal() {
+        document.getElementById('insights-history-modal').classList.remove('active');
+    }
+
+    toggleInsightsSection() {
+        const section = document.getElementById('insights-section');
+        section.classList.toggle('collapsed');
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    setupInsightsEventListeners() {
+        // Toggle insights section collapse
+        document.getElementById('insights-toggle').addEventListener('click', (e) => {
+            // Don't toggle if clicking on buttons
+            if (e.target.closest('.insights-actions')) return;
+            this.toggleInsightsSection();
+        });
+
+        // Generate insight button
+        document.getElementById('generate-insight-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.generateInsight();
+        });
+
+        // View history button
+        document.getElementById('toggle-insights-history').addEventListener('click', () => {
+            this.openInsightsHistoryModal();
+        });
+
+        // History modal close buttons
+        document.getElementById('insights-history-close').addEventListener('click', () => {
+            this.closeInsightsHistoryModal();
+        });
+
+        document.getElementById('insights-history-close-btn').addEventListener('click', () => {
+            this.closeInsightsHistoryModal();
+        });
+
+        // Load more button
+        document.getElementById('load-more-insights').addEventListener('click', () => {
+            this.loadInsightsHistory(false);
+        });
+
+        // Close modal on backdrop click
+        document.getElementById('insights-history-modal').addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                this.closeInsightsHistoryModal();
+            }
+        });
     }
 
     // --- Drag and Drop ---

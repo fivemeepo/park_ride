@@ -11,6 +11,16 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    # Look for .env in the project root
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_path = os.path.join(project_root, '.env')
+    load_dotenv(env_path)
+except ImportError:
+    pass  # python-dotenv not installed, rely on system env vars
+
 
 def create_app(config=None):
     """Application factory for Flask app."""

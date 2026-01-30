@@ -2,9 +2,11 @@
 REST API endpoints for the dashboard.
 """
 
+import os
 from datetime import datetime
 from flask import Blueprint, jsonify, request, current_app
 from parkride.storage import ParkingDatabase
+from parkride.insights import InsightsGenerator
 from dashboard.config import DashboardConfig
 
 api_bp = Blueprint('api', __name__)
@@ -126,3 +128,59 @@ def save_dashboard_config():
         return jsonify({'success': True, 'message': 'Configuration saved'})
     else:
         return jsonify({'error': 'Failed to save configuration'}), 500
+
+
+@api_bp.route('/insights/latest')
+def get_latest_insight():
+    """Get the most recent insight."""
+    db = get_db()
+    try:
+        insight = db.get_latest_insight()
+        return jsonify({'insight': insight})
+    finally:
+        db.close()
+
+
+@api_bp.route('/insights')
+def get_insights():
+    """
+    Get paginated list of insights.
+
+    Query params:
+        limit: Maximum number of results (default: 10)
+        offset: Number of results to skip (default: 0)
+    """
+    limit = int(request.args.get('limit', 10))
+    offset = int(request.args.get('offset', 0))
+
+    db = get_db()
+    try:
+        insights = db.get_insights(limit=limit, offset=offset)
+        total = db.get_insights_count()
+        return jsonify({
+            'insights': insights,
+            'total': total,
+            'hasMore': offset + len(insights) < total
+        })
+    finally:
+        db.close()
+
+
+@api_bp.route('/insights/generate', methods=['POST'])
+def generate_insight():
+    """Generate a new insight using LLM."""
+    data = request.get_json() or {}
+    insight_type = data.get('type', 'daily_summary')
+    hours = data.get('hours', 24)
+
+    db = get_db()
+    try:
+        generator = InsightsGenerator(db, api_key=os.environ.get('ANTHROPIC_API_KEY'))
+        insight = generator.generate_insight(insight_type, hours)
+        insight_id = generator.save_insight(insight)
+
+        return jsonify({'insight': insight, 'id': insight_id})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        db.close()

@@ -19,20 +19,26 @@ This document describes the technical design for querying Transport NSW Park&Rid
 │ - GraphQL fetch   │  │ - LiveChart     │  │ - REST API          │
 │ - 60s polling     │  │ - Static charts │  │ - Chart.js frontend │
 │ - Notifications   │  │ - Patterns      │  │ - Config persistence│
-└───────────────────┘  └─────────────────┘  └─────────────────────┘
-            │                    │                    │
-            ▼                    ▼                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      parkride.storage                           │
-│                     (SQLite Data Layer)                         │
-│  - CRUD operations  - Time-based queries  - CSV export          │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       parking_data.db                           │
-│                      (SQLite Database)                          │
-└─────────────────────────────────────────────────────────────────┘
+└───────────────────┘  └─────────────────┘  │ - AI Insights       │
+            │                    │          └─────────────────────┘
+            ▼                    ▼                    │
+┌─────────────────────────────────────────┐          │
+│            parkride.storage             │          │
+│           (SQLite Data Layer)           │◄─────────┘
+│  - CRUD operations                      │
+│  - Time-based queries                   │
+│  - CSV export                           │
+│  - Insights storage                     │
+└─────────────────────────────────────────┘
+            │                    │
+            ▼                    ▼
+┌───────────────────────┐  ┌──────────────────────────────────────┐
+│   parking_data.db     │  │        parkride.insights             │
+│  (SQLite Database)    │  │      (AI-Powered Analysis)           │
+│  - parking_readings   │  │  - Data aggregation                  │
+│  - insights           │  │  - LLM integration (Anthropic API)   │
+└───────────────────────┘  │  - Insight generation & storage      │
+                           └──────────────────────────────────────┘
 ```
 
 ## File Structure
@@ -46,6 +52,7 @@ park_ride/
 │   ├── collector.py        # GraphQL data fetcher
 │   ├── storage.py          # SQLite database module
 │   ├── visualize.py        # Visualization (matplotlib)
+│   ├── insights.py         # AI-powered insights generator
 │   └── legacy.py           # Playwright fallback
 ├── dashboard/              # Flask web dashboard
 │   ├── __init__.py         # App factory
@@ -135,6 +142,23 @@ query getLocations {
 
 - `idx_carpark_timestamp` on (carpark_name, timestamp) - For time-range queries
 - `idx_timestamp` on (timestamp) - For cleanup operations
+
+### Table: insights
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Primary key, auto-increment |
+| created_at | DATETIME | When the insight was generated |
+| insight_type | TEXT | Type of insight (e.g., 'daily_summary') |
+| title | TEXT | Short title summarizing the insight |
+| content | TEXT | Full insight text (2-3 paragraphs) |
+| data_range_start | DATETIME | Start of analyzed data range |
+| data_range_end | DATETIME | End of analyzed data range |
+| metadata | TEXT | JSON-encoded additional data |
+
+### Indexes (insights)
+
+- `idx_insights_created_at` on (created_at DESC) - For fetching latest insights
 
 ## CLI Interface
 
@@ -245,6 +269,9 @@ Flask-based web application for browser-based visualization.
 | `/api/latest?carpark=X,Y` | GET | Current availability |
 | `/api/config` | GET | Load dashboard config |
 | `/api/config` | POST | Save dashboard config |
+| `/api/insights/latest` | GET | Get most recent insight |
+| `/api/insights?limit=10&offset=0` | GET | Paginated insights history |
+| `/api/insights/generate` | POST | Generate new insight via LLM |
 
 #### Frontend Components
 
@@ -252,6 +279,7 @@ Flask-based web application for browser-based visualization.
 - **Auto-refresh** - Polls API every 60 seconds
 - **Multi-select** - Choose multiple carparks per chart
 - **Preset time ranges** - 1h, 6h, 24h, 48h, 7d
+- **AI Insights** - Generate and view LLM-powered parking analysis
 
 #### Configuration File (dashboard_config.json)
 
@@ -289,6 +317,51 @@ python run_dashboard.py --debug
 python run_dashboard.py --db /path/to/parking_data.db
 ```
 
+### 5. Insights Module (parkride/insights.py)
+
+AI-powered analysis module using LLM (Anthropic Claude) to generate insights from parking data.
+
+```python
+class InsightsGenerator:
+    def __init__(db: ParkingDatabase, api_key: str = None)
+    def prepare_data_summary(hours: int = 24) -> dict
+    def generate_insight(insight_type: str, hours: int) -> dict
+    def save_insight(insight: dict) -> int
+```
+
+#### Data Flow
+
+```
+Frontend "Generate Insight" Button
+    ↓ POST /api/insights/generate
+API Endpoint (dashboard/api.py)
+    ↓
+InsightsGenerator.generate_insight()
+    ↓ reads data
+ParkingDatabase → aggregates stats → sends to LLM API
+    ↓
+Stores insight in SQLite (insights table)
+    ↓
+Returns new insight to frontend
+    ↓
+Frontend displays with animation
+```
+
+#### Data Summary Structure
+
+The `prepare_data_summary()` method aggregates per-carpark statistics:
+- Average, min, max available spots
+- Peak occupancy time
+- Average occupancy rate percentage
+
+#### Environment Setup
+
+```bash
+export ANTHROPIC_API_KEY="your-api-key"
+```
+
+If the API key is not set, a fallback message is displayed prompting configuration.
+
 ## Performance
 
 | Metric | Playwright | GraphQL |
@@ -311,6 +384,7 @@ requests>=2.28.0      # HTTP client for GraphQL API
 matplotlib>=3.7.0     # Chart generation (CLI)
 pandas>=2.0.0         # Data manipulation (optional)
 flask>=3.0.0          # Web dashboard
+anthropic>=0.18.0     # AI insights (Anthropic Claude API)
 playwright            # Fallback web scraping (original version)
 ```
 
@@ -318,6 +392,7 @@ playwright            # Fallback web scraping (original version)
 
 - [x] Web dashboard for visualization (implemented)
 - [x] Multiple carpark comparison charts (implemented)
+- [x] AI-powered insights with LLM analysis (implemented)
 - [ ] Push notifications (iOS/Android)
 - [ ] Predictive availability based on historical patterns
 - [ ] Alert rules configuration

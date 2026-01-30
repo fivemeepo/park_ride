@@ -6,5 +6,9 @@ pandas>=2.0.0
 # Web dashboard
 flask>=3.0.0
 
+# AI insights
+anthropic>=0.18.0
+python-dotenv>=1.0.0
+
 # Original Playwright version (kept as fallback)
 playwright
