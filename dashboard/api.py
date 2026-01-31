@@ -172,11 +172,12 @@ def generate_insight():
     data = request.get_json() or {}
     insight_type = data.get('type', 'daily_summary')
     hours = data.get('hours', 24)
+    carpark = data.get('carpark')  # None means all carparks
 
     db = get_db()
     try:
         generator = InsightsGenerator(db, api_key=os.environ.get('ANTHROPIC_API_KEY'))
-        insight = generator.generate_insight(insight_type, hours)
+        insight = generator.generate_insight(insight_type, hours, carpark=carpark)
         insight_id = generator.save_insight(insight)
 
         return jsonify({'insight': insight, 'id': insight_id})

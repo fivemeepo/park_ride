@@ -26,17 +26,21 @@ class InsightsGenerator:
         self.db = db
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
 
-    def prepare_data_summary(self, hours: int = 24) -> dict:
+    def prepare_data_summary(self, hours: int = 24, carpark: Optional[str] = None) -> dict:
         """
         Prepare a summary of parking data for analysis.
 
         Args:
             hours: Number of hours of data to analyze
+            carpark: Specific carpark to analyze, or None for all carparks
 
         Returns:
             Dict containing aggregated stats per carpark
         """
-        carparks = self.db.get_available_carparks()
+        if carpark:
+            carparks = [carpark]
+        else:
+            carparks = self.db.get_available_carparks()
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
 
@@ -46,6 +50,7 @@ class InsightsGenerator:
                 "end": end_time.strftime("%Y-%m-%d %H:%M:%S"),
                 "hours": hours
             },
+            "carpark_filter": carpark,
             "carparks": {}
         }
 
@@ -87,18 +92,19 @@ class InsightsGenerator:
 
         return summary
 
-    def generate_insight(self, insight_type: str = "daily_summary", hours: int = 24) -> dict:
+    def generate_insight(self, insight_type: str = "daily_summary", hours: int = 24, carpark: Optional[str] = None) -> dict:
         """
         Generate an insight using the LLM.
 
         Args:
             insight_type: Type of insight to generate
             hours: Hours of data to analyze
+            carpark: Specific carpark to analyze, or None for all carparks
 
         Returns:
             Dict containing the generated insight
         """
-        data_summary = self.prepare_data_summary(hours)
+        data_summary = self.prepare_data_summary(hours, carpark=carpark)
 
         if not data_summary["carparks"]:
             return {
@@ -107,7 +113,7 @@ class InsightsGenerator:
                 "content": "There is no parking data available for the selected time range.",
                 "data_range_start": data_summary["time_range"]["start"],
                 "data_range_end": data_summary["time_range"]["end"],
-                "metadata": {"hours": hours}
+                "metadata": {"hours": hours, "carpark_filter": carpark}
             }
 
         prompt = self._build_prompt(data_summary, insight_type)
@@ -124,7 +130,8 @@ class InsightsGenerator:
             "data_range_end": data_summary["time_range"]["end"],
             "metadata": {
                 "hours": hours,
-                "carparks_analyzed": len(data_summary["carparks"])
+                "carparks_analyzed": len(data_summary["carparks"]),
+                "carpark_filter": carpark
             }
         }
 
@@ -142,9 +149,17 @@ class InsightsGenerator:
         carpark_text = "\n".join(carpark_details)
         time_range = data_summary["time_range"]
 
+        # Add context about which carparks are being analyzed
+        carpark_filter = data_summary.get("carpark_filter")
+        if carpark_filter:
+            scope_text = f"Analysis Scope: Single carpark - {carpark_filter}"
+        else:
+            scope_text = f"Analysis Scope: All carparks ({len(data_summary['carparks'])} total)"
+
         return f"""Analyze the following parking data and provide insights.
 
 Time Range: {time_range['start']} to {time_range['end']} ({time_range['hours']} hours)
+{scope_text}
 
 Carpark Statistics:
 {carpark_text}

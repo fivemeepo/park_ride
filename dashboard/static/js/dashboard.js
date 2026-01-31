@@ -67,6 +67,7 @@ class DashboardApp {
             const data = await response.json();
             this.carparks = data.carparks || [];
             this.populateCarparksList();
+            this.populateInsightsCarparkDropdown();
         } catch (error) {
             console.error('Failed to load carparks:', error);
             this.carparks = [];
@@ -210,6 +211,22 @@ class DashboardApp {
             listContainer.appendChild(label);
         });
         this.updateSelectedCount();
+    }
+
+    populateInsightsCarparkDropdown() {
+        const select = document.getElementById('insight-carpark-select');
+        if (!select) return;
+
+        // Keep "All Carparks" as first option
+        select.innerHTML = '<option value="">All Carparks</option>';
+
+        // Add each carpark as an option
+        this.carparks.forEach(carpark => {
+            const option = document.createElement('option');
+            option.value = carpark;
+            option.textContent = carpark;
+            select.appendChild(option);
+        });
     }
 
     filterCarparksList(searchTerm) {
@@ -792,10 +809,15 @@ class DashboardApp {
         this.setGeneratingState(true);
         try {
             const hours = this.config.settings.timeRange || 24;
+            const selectedCarpark = document.getElementById('insight-carpark-select').value;
             const response = await fetch('/api/insights/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: 'daily_summary', hours })
+                body: JSON.stringify({
+                    type: 'daily_summary',
+                    hours,
+                    carpark: selectedCarpark || null
+                })
             });
             const data = await response.json();
             if (data.error) {
@@ -848,7 +870,7 @@ class DashboardApp {
 
     setGeneratingState(isGenerating) {
         const btn = document.getElementById('generate-insight-btn');
-        const textSpan = btn.querySelector('.btn-text');
+        const textSpan = btn.querySelector('.btn-label');
         const loadingSpan = btn.querySelector('.btn-loading');
         btn.disabled = isGenerating;
         textSpan.style.display = isGenerating ? 'none' : 'inline';

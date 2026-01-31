@@ -149,6 +149,25 @@ body {
     text-decoration: underline;
 }
 
+/* Button label for primary buttons (white text) */
+.btn-primary .btn-label {
+    color: white;
+}
+
+/* Insights carpark selector */
+.insights-carpark-selector {
+    margin-right: 0.75rem;
+}
+
+.insights-carpark-selector select {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--card-bg);
+    font-size: 0.875rem;
+    min-width: 180px;
+}
+
 .btn-icon {
     background: none;
     border: none;
