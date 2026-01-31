@@ -1,0 +1,101 @@
+{
+  "charts": [
+    {
+      "carparks": [
+        "Narrabeen"
+      ],
+      "id": "chart-1769654954406",
+      "layout": {
+        "col": 0,
+        "row": 0,
+        "width": 6
+      },
+      "title": "Narrabeen"
+    },
+    {
+      "carparks": [
+        "Dee Why"
+      ],
+      "id": "chart-1769657108911",
+      "layout": {
+        "col": 6,
+        "row": 0,
+        "width": 6
+      },
+      "title": "Dee Why"
+    },
+    {
+      "carparks": [
+        "Warriewood"
+      ],
+      "id": "chart-1769657160099",
+      "layout": {
+        "col": 0,
+        "row": 1,
+        "width": 6
+      },
+      "title": "Warriewood"
+    },
+    {
+      "carparks": [
+        "Manly Vale"
+      ],
+      "id": "chart-1769657127655",
+      "layout": {
+        "col": 6,
+        "row": 1,
+        "width": 6
+      },
+      "title": "Manly Vale"
+    },
+    {
+      "carparks": [
+        "Brookvale"
+      ],
+      "id": "chart-1769685453960",
+      "layout": {
+        "col": 0,
+        "row": 2,
+        "width": 6
+      },
+      "title": "Brookvale"
+    },
+    {
+      "carparks": [
+        "Mona Vale"
+      ],
+      "id": "chart-1769685472064",
+      "layout": {
+        "col": 6,
+        "row": 2,
+        "width": 6
+      },
+      "title": "Mona Vale"
+    },
+    {
+      "carparks": [
+        "Brookvale",
+        "Dee Why",
+        "Manly Vale",
+        "Mona Vale",
+        "Narrabeen",
+        "Warriewood"
+      ],
+      "chartType": "vacancy_rate",
+      "id": "chart-1769748172838",
+      "layout": {
+        "col": 0,
+        "row": 3,
+        "width": 12
+      },
+      "title": "Brookvale, Dee Why, Manly Vale, Mona Vale, Narrabeen, Warriewood"
+    }
+  ],
+  "lastModified": "2026-01-31T08:58:15.221943",
+  "settings": {
+    "autoRefresh": true,
+    "refreshInterval": 60,
+    "timeRange": 168
+  },
+  "version": 2
+}

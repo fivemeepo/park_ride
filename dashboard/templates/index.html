@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Park&Ride Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <h1>Park&Ride Dashboard</h1>
+            <div class="header-controls">
+                <div class="time-range-selector">
+                    <span class="time-range-label">Time Range:</span>
+                    <select id="time-range-select" class="time-range-dropdown">
+                        <option value="1">1h</option>
+                        <option value="6">6h</option>
+                        <option value="12">12h</option>
+                        <option value="24" selected>24h</option>
+                        <option value="48">2d</option>
+                        <option value="72">3d</option>
+                        <option value="168">7d</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                    <div id="custom-range-container" class="custom-range-container" style="display: none;">
+                        <input type="text" id="date-range-picker" placeholder="Select date range">
+                    </div>
+                </div>
+                <button id="add-chart-btn" class="btn btn-primary">+ Add Chart</button>
+            </div>
+        </header>
+
+        <!-- Insights Section -->
+        <section class="insights-section collapsed" id="insights-section">
+            <div class="insights-header" id="insights-toggle">
+                <div class="insights-header-left">
+                    <span class="collapse-icon">▶</span>
+                    <h2>Insights</h2>
+                </div>
+                <div class="insights-actions">
+                    <div class="insights-carpark-selector">
+                        <select id="insight-carpark-select" class="form-select">
+                            <option value="">All Carparks</option>
+                        </select>
+                    </div>
+                    <button id="generate-insight-btn" class="btn btn-primary">
+                        <span class="btn-label">Generate Insight</span>
+                        <span class="btn-loading" style="display: none;">
+                            <span class="spinner"></span> Analyzing...
+                        </span>
+                    </button>
+                    <button id="toggle-insights-history" class="btn btn-text">View History</button>
+                </div>
+            </div>
+            <div class="insights-body">
+                <div class="insights-card" id="latest-insight">
+                    <div class="insight-empty">
+                        <p>No insights generated yet. Click "Generate Insight" to analyze your parking data.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Charts Grid -->
+        <main class="charts-grid" id="charts-container">
+            <!-- Charts will be dynamically added here -->
+        </main>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-item">
+                <label>
+                    <input type="checkbox" id="auto-refresh-toggle" checked>
+                    Auto-refresh
+                </label>
+                <span id="refresh-interval">(60s)</span>
+            </div>
+            <div class="status-item">
+                Last updated: <span id="last-updated">-</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Add/Edit Chart Modal -->
+    <div class="modal" id="chart-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Add Chart</h2>
+                <button class="close-btn" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="chart-title">Chart Title</label>
+                    <input type="text" id="chart-title" placeholder="e.g., Narrabeen Parking">
+                </div>
+                <div class="form-group">
+                    <label for="chart-type">Chart Type</label>
+                    <select id="chart-type" class="chart-type-select">
+                        <option value="available_spots">Available Spots</option>
+                        <option value="vacancy_rate">Vacancy Rate (%)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="chart-width">Chart Width</label>
+                    <select id="chart-width">
+                        <option value="3">Quarter (3 cols)</option>
+                        <option value="4">Small (4 cols)</option>
+                        <option value="6">Medium (6 cols)</option>
+                        <option value="8">Large (8 cols)</option>
+                        <option value="12" selected>Full Width (12 cols)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Carparks</label>
+                    <div class="carpark-search-container">
+                        <input type="text" id="carpark-search" placeholder="Search carparks...">
+                        <button type="button" id="clear-search" class="clear-search-btn" title="Clear search">&times;</button>
+                    </div>
+                    <div id="carpark-list" class="carpark-list">
+                        <!-- Dynamically populated with checkboxes -->
+                    </div>
+                    <small id="selected-count">0 selected</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State Template -->
+    <template id="empty-state-template">
+        <div class="empty-state">
+            <p>No charts configured yet.</p>
+            <p>Click "Add Chart" to get started!</p>
+        </div>
+    </template>
+
+    <!-- Chart Card Template -->
+    <template id="chart-card-template">
+        <div class="chart-card" data-chart-id="">
+            <div class="chart-header">
+                <h3 class="chart-title"></h3>
+                <div class="chart-actions">
+                    <button class="btn-icon edit-btn" title="Edit">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                        </svg>
+                    </button>
+                    <button class="btn-icon remove-btn" title="Remove">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="chart-container">
+                <canvas></canvas>
+            </div>
+            <div class="chart-footer">
+                <span class="chart-info"></span>
+            </div>
+        </div>
+    </template>
+
+    <!-- Insights History Modal -->
+    <div class="modal" id="insights-history-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2>Insights History</h2>
+                <button class="close-btn" id="insights-history-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="insights-history-list" class="insights-history-list">
+                    <!-- Dynamically populated -->
+                </div>
+                <div id="insights-history-empty" class="empty-state" style="display: none;">
+                    <p>No insights have been generated yet.</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="load-more-insights" style="display: none;">Load More</button>
+                <button class="btn" id="insights-history-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
