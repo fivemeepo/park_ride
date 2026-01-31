@@ -15,16 +15,25 @@ from parkride.storage import ParkingDatabase
 class InsightsGenerator:
     """Generates AI-powered insights from parking data."""
 
+    # Default Ark model endpoint - can be overridden via ARK_MODEL_ID env var
+    DEFAULT_ARK_MODEL = "doubao-1-5-pro-256k-250115"
+    # Default base URL (i18n region) - can be overridden via ARK_BASE_URL env var
+    DEFAULT_ARK_BASE_URL = "https://ark-ap-southeast.byteintl.net/api/v3"
+
     def __init__(self, db: ParkingDatabase, api_key: Optional[str] = None):
         """
         Initialize the insights generator.
 
         Args:
             db: ParkingDatabase instance for data access
-            api_key: Anthropic API key (defaults to ANTHROPIC_API_KEY env var)
+            api_key: API key (checks ARK_API_KEY first, then ANTHROPIC_API_KEY)
         """
         self.db = db
-        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        # Try Ark API key first (ByteDance internal), then Anthropic
+        self.ark_api_key = os.environ.get("ARK_API_KEY")
+        self.anthropic_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        self.ark_model = os.environ.get("ARK_MODEL_ID", self.DEFAULT_ARK_MODEL)
+        self.ark_base_url = os.environ.get("ARK_BASE_URL", self.DEFAULT_ARK_BASE_URL)
 
     def prepare_data_summary(self, hours: int = 24, carpark: Optional[str] = None) -> dict:
         """
@@ -177,14 +186,49 @@ TITLE: [Your title here]
 CONTENT: [Your analysis here]"""
 
     def _call_llm(self, prompt: str) -> str:
-        """Call the Anthropic API to generate insights."""
-        if not self.api_key:
-            return self._generate_fallback_response(prompt)
+        """Call LLM API to generate insights. Tries Ark first, then Anthropic."""
+        # Try ByteDance Ark (Doubao) first
+        if self.ark_api_key:
+            result = self._call_ark(prompt)
+            if result:
+                return result
 
+        # Fall back to Anthropic
+        if self.anthropic_api_key:
+            result = self._call_anthropic(prompt)
+            if result:
+                return result
+
+        return self._generate_fallback_response()
+
+    def _call_ark(self, prompt: str) -> Optional[str]:
+        """Call ByteDance Ark API (Doubao model) using OpenAI-compatible interface."""
+        try:
+            from openai import OpenAI
+
+            client = OpenAI(
+                api_key=self.ark_api_key,
+                base_url=self.ark_base_url,
+            )
+            completion = client.chat.completions.create(
+                model=self.ark_model,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1024,
+            )
+            return completion.choices[0].message.content
+        except ImportError:
+            return None
+        except Exception as e:
+            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Ark: {str(e)}"
+
+    def _call_anthropic(self, prompt: str) -> Optional[str]:
+        """Call Anthropic API."""
         try:
             import anthropic
 
-            client = anthropic.Anthropic(api_key=self.api_key)
+            client = anthropic.Anthropic(api_key=self.anthropic_api_key)
             message = client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
@@ -194,17 +238,17 @@ CONTENT: [Your analysis here]"""
             )
             return message.content[0].text
         except ImportError:
-            return self._generate_fallback_response(prompt)
+            return None
         except Exception as e:
-            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights due to an error: {str(e)}"
+            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Anthropic: {str(e)}"
 
-    def _generate_fallback_response(self, prompt: str) -> str:
-        """Generate a basic response when LLM is not available."""
+    def _generate_fallback_response(self) -> str:
+        """Generate a basic response when no LLM is available."""
         return (
             "TITLE: Parking Data Summary\n"
             "CONTENT: AI-powered analysis is not available. "
-            "Please set the ANTHROPIC_API_KEY environment variable to enable intelligent insights. "
-            "The raw data has been collected and is ready for analysis once the API key is configured."
+            "Please set the ARK_API_KEY (for ByteDance Ark/Doubao) or ANTHROPIC_API_KEY environment variable to enable intelligent insights. "
+            "The raw data has been collected and is ready for analysis once an API key is configured."
         )
 
     def _parse_response(self, response: str) -> tuple[str, str]:
