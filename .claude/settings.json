@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Processing your request...\" with title \"Claude Code\"'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Waiting for your input\" with title \"Claude Code\" sound name \"Ping\"'"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Confirmation required\" with title \"Claude Code\" sound name \"Glass\"'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Task completed!\" with title \"Claude Code\" sound name \"Hero\"'"
+          }
+        ]
+      }
+    ]
+  }
+}

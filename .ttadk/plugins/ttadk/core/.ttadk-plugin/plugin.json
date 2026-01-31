@@ -1,0 +1,31 @@
+{
+  "name": "ttadk/core",
+  "display_name": "TTADK SDD Workflow",
+  "version": "1.0.0",
+  "description": "TTADK SDD workflow commands and MCP configs",
+  "author": {"name": "ttadk", "email": "ttadk@bytedance.com"},
+  "tags": [
+    "sdd",
+    "adk"
+  ],
+  "commands": [
+    {"name": "plan", "path": "adk/plan.md"},
+    {"name": "specify", "path": "adk/specify.md"},
+    {"name": "tasks", "path": "adk/tasks.md"},
+    {"name": "implement", "path": "adk/implement.md"},
+    {"name": "clarify", "path": "adk/clarify.md"},
+    {"name": "analyze", "path": "adk/analyze.md"},
+    {"name": "checklist", "path": "adk/checklist.md"},
+    {"name": "commit", "path": "adk/commit.md"},
+    {"name": "archive", "path": "adk/archive.md"},
+    {"name": "constitution", "path": "adk/constitution.md"},
+    {"name": "proposal", "path": "adkl/proposal.md"},
+    {"name": "revise", "path": "adkl/revise.md"},
+    {"name": "apply", "path": "adkl/apply.md"},
+    {"name": "erd", "path": "adk/erd.md"}
+  ],
+  "mcps": [
+    {"name": "lark_docs", "path": "lark_docs.json"},
+    {"name": "tiksearch", "path": "tiksearch.json"}
+  ]
+}
