@@ -216,7 +216,7 @@ CONTENT: [Your analysis here]"""
         return self._generate_fallback_response(), None
 
     def _call_ark(self, prompt: str) -> tuple[Optional[str], Optional[str]]:
-        """Call ByteDance Ark API (Doubao model) using OpenAI-compatible interface.
+        """Call ByteDance Ark API using OpenAI SDK.
 
         Returns:
             Tuple of (response_text, reasoning_text). reasoning_text may be None.
@@ -238,7 +238,7 @@ CONTENT: [Your analysis here]"""
             message = completion.choices[0].message
             response_text = message.content
 
-            # Try to extract reasoning content if available (for models that support it)
+            # Extract reasoning content if available
             reasoning_text = None
             if hasattr(message, 'reasoning_content') and message.reasoning_content:
                 reasoning_text = message.reasoning_content
