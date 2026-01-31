@@ -1,0 +1,11 @@
+{
+  "name": "ttadk/common-kit",
+  "display_name": "TTADK Common Kit",
+  "version": "1.0.0",
+  "description": "TTADK Common Kit",
+  "author": {"name": "ttadk", "email": "ttadk@bytedance.com"},
+  "tags": [],
+  "skills": [
+    {"name": "common-knowledge", "path": "common-knowledge"}
+  ]
+}

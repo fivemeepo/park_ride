@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "tiksearch": {
+      "command": "bunx",
+      "args": [
+        "--registry=http://bnpm.byted.org/",
+        "@tiktok-mcp/tiksearch"
+      ],
+      "env": {
+        "NPM_CONFIG_REGISTRY": "http://bnpm.byted.org/"
+      }
+    }
+  }
+}

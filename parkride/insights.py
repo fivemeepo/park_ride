@@ -22,6 +22,9 @@ load_dotenv(_env_path)
 class InsightsGenerator:
     """Generates AI-powered insights from parking data."""
 
+    # Default Ark API base URL (i18n region)
+    DEFAULT_ARK_BASE_URL = "https://ark-ap-southeast.byteintl.net/api/v3"
+
     def __init__(self, db: ParkingDatabase, api_key: Optional[str] = None):
         """
         Initialize the insights generator.
@@ -29,7 +32,6 @@ class InsightsGenerator:
         Configuration is loaded from .env file:
             ARK_API_KEY: ByteDance Ark API key
             ARK_MODEL_ID: Ark model/endpoint ID
-            ARK_BASE_URL: Ark API base URL
             ANTHROPIC_API_KEY: Anthropic API key (fallback)
 
         Args:
@@ -40,7 +42,7 @@ class InsightsGenerator:
         # Load from .env (already loaded at module level)
         self.ark_api_key = os.environ.get("ARK_API_KEY")
         self.ark_model = os.environ.get("ARK_MODEL_ID")
-        self.ark_base_url = os.environ.get("ARK_BASE_URL")
+        self.ark_base_url = os.environ.get("ARK_BASE_URL", self.DEFAULT_ARK_BASE_URL)
         self.anthropic_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
 
     def prepare_data_summary(self, hours: int = 24, carpark: Optional[str] = None) -> dict:
