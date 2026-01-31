@@ -838,6 +838,7 @@ class DashboardApp {
         const createdAt = insight.created_at ? new Date(insight.created_at).toLocaleString() : 'Just now';
         const rangeStart = insight.data_range_start ? new Date(insight.data_range_start).toLocaleString() : '-';
         const rangeEnd = insight.data_range_end ? new Date(insight.data_range_end).toLocaleString() : '-';
+        const model = insight.metadata?.model || 'Unknown';
 
         // Convert content paragraphs
         const contentHtml = insight.content
@@ -846,14 +847,31 @@ class DashboardApp {
             .map(p => `<p>${this.escapeHtml(p)}</p>`)
             .join('');
 
+        // Build thinking section if available
+        let thinkingHtml = '';
+        if (insight.thinking) {
+            const thinkingContent = this.escapeHtml(insight.thinking)
+                .split('\n')
+                .map(line => line || '&nbsp;')
+                .join('<br>');
+            thinkingHtml = `
+                <details class="insight-thinking">
+                    <summary>Show Model Thinking Process</summary>
+                    <div class="thinking-content">${thinkingContent}</div>
+                </details>
+            `;
+        }
+
         container.innerHTML = `
             <div class="insight-content">
                 <span class="insight-type">${this.escapeHtml(insight.insight_type.replace('_', ' '))}</span>
                 <h3 class="insight-title">${this.escapeHtml(insight.title)}</h3>
                 <div class="insight-text">${contentHtml}</div>
+                ${thinkingHtml}
                 <div class="insight-meta">
                     <span>Generated: ${createdAt}</span>
                     <span>Data range: ${rangeStart} - ${rangeEnd}</span>
+                    <span>Model: ${this.escapeHtml(model)}</span>
                 </div>
             </div>
         `;

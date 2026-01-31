@@ -321,6 +321,42 @@ body {
     margin-bottom: 0;
 }
 
+.insight-thinking {
+    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: #f8f9fa;
+}
+
+.insight-thinking summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--primary-color);
+    user-select: none;
+}
+
+.insight-thinking summary:hover {
+    background-color: #e9ecef;
+}
+
+.insight-thinking[open] summary {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.thinking-content {
+    padding: 1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 .insight-meta {
     margin-top: 1rem;
     padding-top: 1rem;

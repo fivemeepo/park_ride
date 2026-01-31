@@ -3,7 +3,7 @@
 Run the Park&Ride Dashboard web server.
 
 Usage:
-    python run_dashboard.py                     # Run on localhost:5000
+    python run_dashboard.py                     # Run on localhost:8080
     python run_dashboard.py --port 8080         # Custom port
     python run_dashboard.py --host 0.0.0.0      # Allow external access
     python run_dashboard.py --debug             # Enable debug mode
@@ -23,8 +23,8 @@ def main():
     parser = argparse.ArgumentParser(description='Run Park&Ride Dashboard')
     parser.add_argument('--host', default='127.0.0.1',
                         help='Host to bind to (default: 127.0.0.1)')
-    parser.add_argument('--port', type=int, default=5000,
-                        help='Port to bind to (default: 5000)')
+    parser.add_argument('--port', type=int, default=8080,
+                        help='Port to bind to (default: 8080)')
     parser.add_argument('--debug', action='store_true',
                         help='Enable debug mode')
     parser.add_argument('--db', default='parking_data.db',

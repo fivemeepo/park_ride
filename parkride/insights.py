@@ -134,7 +134,7 @@ class InsightsGenerator:
             }
 
         prompt = self._build_prompt(data_summary, insight_type)
-        response = self._call_llm(prompt)
+        response, thinking = self._call_llm(prompt)
 
         # Parse the response
         title, content = self._parse_response(response)
@@ -143,12 +143,14 @@ class InsightsGenerator:
             "insight_type": insight_type,
             "title": title,
             "content": content,
+            "thinking": thinking,
             "data_range_start": data_summary["time_range"]["start"],
             "data_range_end": data_summary["time_range"]["end"],
             "metadata": {
                 "hours": hours,
                 "carparks_analyzed": len(data_summary["carparks"]),
-                "carpark_filter": carpark
+                "carpark_filter": carpark,
+                "model": self.ark_model if self.ark_api_key else "claude-sonnet-4-20250514"
             }
         }
 
@@ -193,24 +195,32 @@ Format your response as:
 TITLE: [Your title here]
 CONTENT: [Your analysis here]"""
 
-    def _call_llm(self, prompt: str) -> str:
-        """Call LLM API to generate insights. Tries Ark first, then Anthropic."""
+    def _call_llm(self, prompt: str) -> tuple[str, Optional[str]]:
+        """Call LLM API to generate insights. Tries Ark first, then Anthropic.
+
+        Returns:
+            Tuple of (response_text, thinking_text). thinking_text may be None.
+        """
         # Try ByteDance Ark (Doubao) first
         if self.ark_api_key:
             result = self._call_ark(prompt)
-            if result:
+            if result[0]:
                 return result
 
         # Fall back to Anthropic
         if self.anthropic_api_key:
             result = self._call_anthropic(prompt)
-            if result:
+            if result[0]:
                 return result
 
-        return self._generate_fallback_response()
+        return self._generate_fallback_response(), None
 
-    def _call_ark(self, prompt: str) -> Optional[str]:
-        """Call ByteDance Ark API (Doubao model) using OpenAI-compatible interface."""
+    def _call_ark(self, prompt: str) -> tuple[Optional[str], Optional[str]]:
+        """Call ByteDance Ark API (Doubao model) using OpenAI-compatible interface.
+
+        Returns:
+            Tuple of (response_text, reasoning_text). reasoning_text may be None.
+        """
         try:
             from openai import OpenAI
 
@@ -225,30 +235,57 @@ CONTENT: [Your analysis here]"""
                 ],
                 max_tokens=1024,
             )
-            return completion.choices[0].message.content
-        except ImportError:
-            return None
-        except Exception as e:
-            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Ark: {str(e)}"
+            message = completion.choices[0].message
+            response_text = message.content
 
-    def _call_anthropic(self, prompt: str) -> Optional[str]:
-        """Call Anthropic API."""
+            # Try to extract reasoning content if available (for models that support it)
+            reasoning_text = None
+            if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                reasoning_text = message.reasoning_content
+
+            return response_text, reasoning_text
+        except ImportError:
+            return None, None
+        except Exception as e:
+            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Ark: {str(e)}", None
+
+    def _call_anthropic(self, prompt: str) -> tuple[Optional[str], Optional[str]]:
+        """Call Anthropic API with extended thinking enabled.
+
+        Returns:
+            Tuple of (response_text, thinking_text). thinking_text may be None.
+        """
         try:
             import anthropic
 
             client = anthropic.Anthropic(api_key=self.anthropic_api_key)
             message = client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=1024,
+                max_tokens=16000,
+                thinking={
+                    "type": "enabled",
+                    "budget_tokens": 10000
+                },
                 messages=[
                     {"role": "user", "content": prompt}
                 ]
             )
-            return message.content[0].text
+
+            # Extract response and thinking from content blocks
+            response_text = None
+            thinking_text = None
+
+            for block in message.content:
+                if block.type == "thinking":
+                    thinking_text = block.thinking
+                elif block.type == "text":
+                    response_text = block.text
+
+            return response_text, thinking_text
         except ImportError:
-            return None
+            return None, None
         except Exception as e:
-            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Anthropic: {str(e)}"
+            return f"TITLE: Analysis Unavailable\nCONTENT: Unable to generate insights via Anthropic: {str(e)}", None
 
     def _generate_fallback_response(self) -> str:
         """Generate a basic response when no LLM is available."""

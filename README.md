@@ -79,7 +79,7 @@ python run_collector.py --export --carpark Narrabeen --output data.csv
 # Start the web dashboard
 python run_dashboard.py
 
-# Open http://localhost:5000 in your browser
+# Open http://localhost:8080 in your browser
 ```
 
 Dashboard features:
