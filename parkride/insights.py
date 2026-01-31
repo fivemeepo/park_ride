@@ -7,33 +7,41 @@ Uses an LLM to analyze parking trends and generate actionable insights.
 
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
 from parkride.storage import ParkingDatabase
+
+# Load .env file from project root
+_env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(_env_path)
 
 
 class InsightsGenerator:
     """Generates AI-powered insights from parking data."""
 
-    # Default Ark model endpoint - can be overridden via ARK_MODEL_ID env var
-    DEFAULT_ARK_MODEL = "doubao-1-5-pro-256k-250115"
-    # Default base URL (i18n region) - can be overridden via ARK_BASE_URL env var
-    DEFAULT_ARK_BASE_URL = "https://ark-ap-southeast.byteintl.net/api/v3"
-
     def __init__(self, db: ParkingDatabase, api_key: Optional[str] = None):
         """
         Initialize the insights generator.
 
+        Configuration is loaded from .env file:
+            ARK_API_KEY: ByteDance Ark API key
+            ARK_MODEL_ID: Ark model/endpoint ID
+            ARK_BASE_URL: Ark API base URL
+            ANTHROPIC_API_KEY: Anthropic API key (fallback)
+
         Args:
             db: ParkingDatabase instance for data access
-            api_key: API key (checks ARK_API_KEY first, then ANTHROPIC_API_KEY)
+            api_key: Override for ANTHROPIC_API_KEY
         """
         self.db = db
-        # Try Ark API key first (ByteDance internal), then Anthropic
+        # Load from .env (already loaded at module level)
         self.ark_api_key = os.environ.get("ARK_API_KEY")
+        self.ark_model = os.environ.get("ARK_MODEL_ID")
+        self.ark_base_url = os.environ.get("ARK_BASE_URL")
         self.anthropic_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        self.ark_model = os.environ.get("ARK_MODEL_ID", self.DEFAULT_ARK_MODEL)
-        self.ark_base_url = os.environ.get("ARK_BASE_URL", self.DEFAULT_ARK_BASE_URL)
 
     def prepare_data_summary(self, hours: int = 24, carpark: Optional[str] = None) -> dict:
         """
