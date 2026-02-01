@@ -36,3 +36,11 @@ ANTHROPIC_API_KEY=xxx    # Fallback LLM
 ## Documentation
 
 See `docs/TECHNICAL_DESIGN.md` for full architecture, API details, and database schema.
+
+## Development Rules
+
+When making code changes:
+
+1. **Update documentation** - Keep `CLAUDE.md` and `docs/TECHNICAL_DESIGN.md` in sync with code changes
+2. **Branch workflow** - Commit to `dev` branch only. Merge to `master` only when explicitly requested
+3. **Push to both remotes** - GitHub and ByteDance must stay in sync
