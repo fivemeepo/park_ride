@@ -25,6 +25,27 @@ ANTHROPIC_API_KEY=xxx    # Fallback LLM
 - `parkride/insights.py` - AI insights (Ark → Anthropic fallback)
 - `dashboard/api.py` - REST endpoints
 - `dashboard/static/js/dashboard.js` - Chart.js frontend
+- `sync_parking_db.sh` - Database sync from remote server
+
+## Database Sync
+
+The database is synced from the remote collector server every 5 minutes via launchd.
+
+```bash
+# Check sync status
+launchctl list | grep parkride
+
+# View logs
+tail -f logs/sync.log
+
+# Stop sync service
+launchctl unload ~/Library/LaunchAgents/com.parkride.sync.plist
+
+# Start sync service
+launchctl load ~/Library/LaunchAgents/com.parkride.sync.plist
+```
+
+**Note:** Requires valid Kerberos tickets (`kinit`) for remote server authentication.
 
 ## Business Logic
 
