@@ -17,5 +17,6 @@ if [ $? -eq 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Sync completed successfully"
 else
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Sync failed with exit code $?"
+	kinit
     exit 1
 fi

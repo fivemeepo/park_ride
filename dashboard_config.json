@@ -91,11 +91,11 @@
       "title": "Brookvale, Dee Why, Manly Vale, Mona Vale, Narrabeen, Warriewood"
     }
   ],
-  "lastModified": "2026-02-02T13:36:30.296936",
+  "lastModified": "2026-02-09T11:35:37.093710",
   "settings": {
     "autoRefresh": true,
     "refreshInterval": 60,
-    "timeRange": 6
+    "timeRange": 168
   },
   "version": 2
 }

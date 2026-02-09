@@ -806,15 +806,23 @@ class DashboardApp {
     }
 
     async generateInsight() {
+        const insightType = document.getElementById('insight-type-select').value;
+        const selectedCarpark = document.getElementById('insight-carpark-select').value;
+
+        // Carpark-specific insight types require a single carpark to be selected
+        if ((insightType === 'morning_recommendation' || insightType === 'commuter_patterns') && !selectedCarpark) {
+            this.renderInsightError('Please select a specific carpark first. Morning Recommendation and Commuter Patterns require a single carpark.');
+            return;
+        }
+
         this.setGeneratingState(true);
         try {
             const hours = this.config.settings.timeRange || 24;
-            const selectedCarpark = document.getElementById('insight-carpark-select').value;
             const response = await fetch('/api/insights/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    type: 'daily_summary',
+                    type: insightType,
                     hours,
                     carpark: selectedCarpark || null
                 })
