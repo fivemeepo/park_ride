@@ -154,19 +154,7 @@ body {
     color: white;
 }
 
-/* Insights carpark selector */
-.insights-carpark-selector {
-    margin-right: 0.75rem;
-}
-
-.insights-carpark-selector select {
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    background-color: var(--card-bg);
-    font-size: 0.875rem;
-    min-width: 180px;
-}
+/* Insights selectors - use .time-range-dropdown class directly */
 
 .btn-icon {
     background: none;

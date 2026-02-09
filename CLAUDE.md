@@ -25,6 +25,27 @@ ANTHROPIC_API_KEY=xxx    # Fallback LLM
 - `parkride/insights.py` - AI insights (Ark → Anthropic fallback)
 - `dashboard/api.py` - REST endpoints
 - `dashboard/static/js/dashboard.js` - Chart.js frontend
+- `sync_parking_db.sh` - Database sync from remote server
+
+## Database Sync
+
+The database is synced from the remote collector server every 5 minutes via launchd.
+
+```bash
+# Check sync status
+launchctl list | grep parkride
+
+# View logs
+tail -f logs/sync.log
+
+# Stop sync service
+launchctl unload ~/Library/LaunchAgents/com.parkride.sync.plist
+
+# Start sync service
+launchctl load ~/Library/LaunchAgents/com.parkride.sync.plist
+```
+
+**Note:** Requires valid Kerberos tickets (`kinit`) for remote server authentication.
 
 ## Business Logic
 
@@ -32,6 +53,12 @@ ANTHROPIC_API_KEY=xxx    # Fallback LLM
 - **Carpark names** stored without "Park&Ride - " prefix
 - **LLM fallback**: ByteDance Ark → Anthropic → static message
 - **Retry**: 3 attempts with exponential backoff (5s → 15s → 30s)
+- **Insight types**:
+  - `morning_recommendation` - Day-specific arrival time recommendations for 7:30-9:30am commute window (default)
+  - `commuter_patterns` - Rush hour analysis with morning/evening start+end times, work hour patterns
+- **Day-of-week analysis**: Groups readings by `datetime.weekday()` (0=Monday, 6=Sunday)
+- **Confidence levels**: "very limited" (<7 days), "limited" (7-13), "moderate" (14-27), "high" (28+)
+- **Graceful degradation**: Always generates insights regardless of data availability (never errors for insufficient data)
 
 ## Documentation
 
@@ -42,5 +69,6 @@ See `docs/TECHNICAL_DESIGN.md` for full architecture, API details, and database 
 When making code changes:
 
 1. **Update documentation** - Keep `CLAUDE.md` and `docs/TECHNICAL_DESIGN.md` in sync with code changes
-2. **Branch workflow** - Commit to `dev` branch only. Merge to `master` only when explicitly requested
-3. **Push to both remotes** - GitHub and ByteDance must stay in sync
+2. **Update specs** - After modifying code in `parkride/`, check if a corresponding spec exists in `specs/` and update it
+3. **Branch workflow** - Commit to `dev` branch only. Merge to `master` only when explicitly requested
+4. **Push to both remotes** - GitHub and ByteDance must stay in sync

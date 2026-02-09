@@ -170,7 +170,7 @@ def get_insights():
 def generate_insight():
     """Generate a new insight using LLM."""
     data = request.get_json() or {}
-    insight_type = data.get('type', 'daily_summary')
+    insight_type = data.get('type', 'morning_recommendation')
     hours = data.get('hours', 24)
     carpark = data.get('carpark')  # None means all carparks
 

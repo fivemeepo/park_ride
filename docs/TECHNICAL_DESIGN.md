@@ -71,6 +71,10 @@ park_ride/
 │   └── shortcuts_guide.md
 ├── parking_data.db         # SQLite database (auto-created)
 ├── dashboard_config.json   # Dashboard config (auto-created)
+├── sync_parking_db.sh      # Database sync script
+├── logs/                   # Sync log files
+│   ├── sync.log            # Sync output log
+│   └── sync_error.log      # Sync error log
 ├── requirements.txt        # Python dependencies
 └── .gitignore
 ```
@@ -376,6 +380,57 @@ If the API key is not set, a fallback message is displayed prompting configurati
 - Default: Keep all data indefinitely
 - At 60s intervals: ~1,440 readings/day, ~44MB/year
 - Optional cleanup: `db.cleanup_old_data(days_to_keep=90)`
+
+## Database Sync (macOS)
+
+The collector runs on a remote server. The local dashboard syncs the database every 5 minutes via macOS launchd.
+
+### Architecture
+
+```
+Remote Server (10.251.232.45)          Local Mac
+┌─────────────────────────┐           ┌──────────────────────────┐
+│ run_collector.py        │           │ launchd (com.parkride.sync)
+│   ↓ writes              │   scp     │   ↓ every 5 min          │
+│ parking_data.db ────────┼──────────►│ parking_data.db          │
+└─────────────────────────┘           │   ↓ reads                │
+                                      │ run_dashboard.py         │
+                                      └──────────────────────────┘
+```
+
+### Files
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `sync_parking_db.sh` | Project root | SCP script to copy database |
+| `com.parkride.sync.plist` | `~/Library/LaunchAgents/` | launchd service definition |
+| `logs/sync.log` | Project root | Sync success/failure log |
+| `logs/sync_error.log` | Project root | Sync error output |
+
+### Management Commands
+
+```bash
+# Check if service is running
+launchctl list | grep parkride
+
+# Stop service
+launchctl unload ~/Library/LaunchAgents/com.parkride.sync.plist
+
+# Start service
+launchctl load ~/Library/LaunchAgents/com.parkride.sync.plist
+
+# Manual sync
+./sync_parking_db.sh
+
+# View logs
+tail -f logs/sync.log
+```
+
+### Prerequisites
+
+- SSH key or Kerberos authentication to remote server
+- Valid Kerberos ticket (`kinit`) if using GSSAPI auth
+- Remote server must be accessible on network
 
 ## Dependencies
 

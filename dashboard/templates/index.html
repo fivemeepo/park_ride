@@ -37,18 +37,20 @@
         </header>
 
         <!-- Insights Section -->
-        <section class="insights-section collapsed" id="insights-section">
+        <section class="insights-section" id="insights-section">
             <div class="insights-header" id="insights-toggle">
                 <div class="insights-header-left">
                     <span class="collapse-icon">▶</span>
                     <h2>Insights</h2>
                 </div>
                 <div class="insights-actions">
-                    <div class="insights-carpark-selector">
-                        <select id="insight-carpark-select" class="form-select">
-                            <option value="">All Carparks</option>
-                        </select>
-                    </div>
+                    <select id="insight-type-select" class="time-range-dropdown">
+                        <option value="morning_recommendation" selected>Morning Recommendation</option>
+                        <option value="commuter_patterns">Commuter Patterns</option>
+                    </select>
+                    <select id="insight-carpark-select" class="time-range-dropdown">
+                        <option value="">All Carparks</option>
+                    </select>
                     <button id="generate-insight-btn" class="btn btn-primary">
                         <span class="btn-label">Generate Insight</span>
                         <span class="btn-loading" style="display: none;">
