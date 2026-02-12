@@ -1,0 +1,89 @@
+graph TB
+    subgraph External["☁️ External Services"]
+        TfNSW["🌐 Transport NSW<br/>GraphQL API"]
+        ArkLLM["🤖 ByteDance Ark<br/>Primary LLM"]
+        AnthropicLLM["🤖 Anthropic<br/>Fallback LLM"]
+    end
+
+    subgraph Clients["👤 Clients"]
+        Browser["🖥️ Web Browser"]
+        LLMAgent["🤖 LLM Agent<br/>Claude Code"]
+    end
+
+    subgraph RemoteServer["📡 Remote Collector Server"]
+        CollectorLoop["⚙️ run_collector.py<br/>--loop mode"]
+        RemoteDB[(💾 parking_data.db)]
+        CollectorLoop -->|store readings| RemoteDB
+    end
+
+    subgraph LocalMachine["💻 Local Machine"]
+        subgraph Sync["🔄 Database Sync"]
+            Launchd["⏰ launchd<br/>every 5 min"]
+            SyncScript["📜 sync_parking_db.sh<br/>scp via Kerberos"]
+        end
+
+        subgraph Dashboard["🌐 Flask Dashboard :8080"]
+            App["⚙️ app.py"]
+            API["📡 api.py<br/>REST Endpoints"]
+            Static["📊 dashboard.js<br/>Chart.js Frontend"]
+            Config["⚙️ config.py"]
+        end
+
+        subgraph Core["📦 parkride/ Core Library"]
+            Collector["🔌 collector.py<br/>GraphQL Fetcher"]
+            Storage["💾 storage.py<br/>SQLite Layer"]
+            Insights["🧠 insights.py<br/>AI Analysis"]
+            Visualize["📈 visualize.py<br/>Live Charts"]
+        end
+
+        subgraph MCP["🔧 MCP Server (stdio)"]
+            MCPServer["⚙️ mcp_server.py<br/>HTTP API Client"]
+        end
+
+        LocalDB[(💾 parking_data.db)]
+    end
+
+    %% Data collection flow
+    TfNSW -->|GraphQL response| Collector
+    TfNSW -->|GraphQL response| MCPServer
+    Collector -->|store| Storage
+    Storage -->|read/write| LocalDB
+
+    %% Remote sync flow
+    Launchd -->|triggers| SyncScript
+    RemoteDB -.->|scp| SyncScript
+    SyncScript -.->|overwrites| LocalDB
+
+    %% LLM flow
+    Insights -->|primary| ArkLLM
+    Insights -->|fallback| AnthropicLLM
+
+    %% Dashboard flow
+    API -->|uses| Storage
+    API -->|uses| Insights
+    App -->|registers| API
+    Static -->|AJAX calls| API
+    Browser -->|HTTP| App
+
+    %% MCP flow
+    MCPServer -->|HTTP /api/*| API
+    LLMAgent -->|stdio| MCPServer
+
+    %% Styles
+    classDef external fill:#FFE4B5,stroke:#CC8400,stroke-width:2px,color:#664200
+    classDef client fill:#E6E6FA,stroke:#6A5ACD,stroke-width:2px,color:#2E1A6E
+    classDef core fill:#90EE90,stroke:#2E8B57,stroke-width:2px,color:#1A4D2E
+    classDef dashboard fill:#87CEEB,stroke:#1E90FF,stroke-width:2px,color:#0A3D6B
+    classDef mcp fill:#DDA0DD,stroke:#8B008B,stroke-width:2px,color:#4B004B
+    classDef db fill:#FFB6C1,stroke:#DC143C,stroke-width:2px,color:#8B0000
+    classDef sync fill:#FAFAD2,stroke:#BDB76B,stroke-width:2px,color:#6B6B2E
+    classDef remote fill:#D3D3D3,stroke:#696969,stroke-width:2px,color:#333333
+
+    class TfNSW,ArkLLM,AnthropicLLM external
+    class Browser,LLMAgent client
+    class Collector,Storage,Insights,Visualize core
+    class App,API,Static,Config dashboard
+    class MCPServer mcp
+    class LocalDB,RemoteDB db
+    class Launchd,SyncScript sync
+    class CollectorLoop remote
