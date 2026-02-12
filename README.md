@@ -46,8 +46,8 @@ python run_collector.py --all
 # Monitor every 60 seconds (default)
 python run_collector.py --loop --carpark Narrabeen
 
-# Custom interval (e.g., 15 seconds)
-python run_collector.py --loop --carpark Narrabeen --interval 15
+# Custom interval (e.g., 300 seconds)
+python run_collector.py --loop --carpark Narrabeen --interval 300
 
 # With live-updating chart
 python run_collector.py --loop --carpark Narrabeen --chart

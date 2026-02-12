@@ -49,8 +49,7 @@ The archive script uses **feature-based spec organization**:
 
 - **Recursively scans** `specs/` for all directories containing `spec.md`
 - **Archives ALL spec directories** (including current feature) into `specs/archived/`
-- **Current feature's spec directory is preserved** (archived but NOT deleted)
-- **Other feature spec directories are deleted** after successful archiving
+- **ALL spec directories are deleted** after successful archiving (including current feature)
 - **Updates specs/ARCHIVE.md** with metadata (feature name, description, date, size, path)
 - **Overwrites existing archives** with the same name (no timestamp suffix)
 - **Skips** `archived/` and `doc_export/` directories
@@ -79,7 +78,7 @@ Current feature: 20250107-new-feature
   20250105-bug-fix (deleted)
     → 20250105-bug-fix.tar.gz (128.7 KB)
 
-  20250107-new-feature (preserved)
+  20250107-new-feature (deleted)
     → 20250107-new-feature.tar.gz (32.1 KB)
 ```
 
@@ -95,7 +94,7 @@ Current feature: 20250107-new-feature
   20250105-bug-fix (will be deleted)
     → 20250105-bug-fix.tar.gz (estimated 64.3 KB)
 
-  20250107-new-feature (preserved)
+  20250107-new-feature (will be deleted)
     → 20250107-new-feature.tar.gz (estimated 16.0 KB)
 ```
 
@@ -119,7 +118,7 @@ Current feature: 20250107-new-feature
       "archivePath": "/path/to/specs/archived/20250107-new-feature.tar.gz",
       "size": "32.1 KB",
       "description": "New Feature Spec",
-      "deleted": false
+      "deleted": true
     }
   ]
 }

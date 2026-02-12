@@ -20,8 +20,14 @@
         "@tiktok-mcp/tiksearch"
       ],
       "env": {
-        "NPM_CONFIG_REGISTRY": "http://bnpm.byted.org/"
+        "NPM_CONFIG_REGISTRY": "http://bnpm.byted.org/",
+        "TIKSEARCH_ENV": "office"
       }
+    },
+    "parkride": {
+      "command": "/opt/homebrew/bin/python3.11",
+      "args": ["mcp_server.py"],
+      "cwd": "/Users/bytedance/work/python/park_ride"
     }
   }
 }

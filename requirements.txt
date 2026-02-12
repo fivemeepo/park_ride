@@ -11,5 +11,8 @@ anthropic>=0.18.0
 openai>=1.0  # Also used for ByteDance Ark (OpenAI-compatible API)
 python-dotenv>=1.0.0
 
+# MCP server
+mcp>=1.0.0
+
 # Original Playwright version (kept as fallback)
 playwright

@@ -9,8 +9,7 @@
  * Key behaviors:
  * - Recursively scans specs/ for all spec directories (supports nested like feat/update-1-1)
  * - Archives ALL spec directories (including current feature)
- * - Current feature's spec directory is NOT deleted after archiving
- * - Other spec directories ARE deleted after archiving
+ * - ALL spec directories are deleted after archiving
  * - If archive file already exists, it is overwritten (not duplicated with timestamp)
  * - archived/ and doc_export/ directories are never touched
  */
@@ -328,7 +327,6 @@ async function archiveSpecs(options = {}) {
         if (options.dryRun) {
             result.dryRun = true;
             for (const spec of allSpecs) {
-                const isCurrentFeature = spec.featureName === currentFeature;
                 const estimatedSize = estimateDirectorySize(spec.fullPath);
                 const archiveFilename = `${featureNameToFilename(spec.featureName)}.tar.gz`;
                 result.archived.push({
@@ -337,14 +335,13 @@ async function archiveSpecs(options = {}) {
                     archivePath: path_1.default.join(archivedDir, archiveFilename),
                     size: `estimated ${formatSize(Math.floor(estimatedSize * 0.5))}`,
                     description: getArchiveDescription(spec.fullPath),
-                    deleted: !isCurrentFeature
+                    deleted: true
                 });
             }
             return result;
         }
         // Archive each spec directory
         for (const spec of allSpecs) {
-            const isCurrentFeature = spec.featureName === currentFeature;
             const archiveFilename = `${featureNameToFilename(spec.featureName)}.tar.gz`;
             let archivePath = path_1.default.join(archivedDir, archiveFilename);
             // Overwrite if archive already exists
@@ -362,8 +359,8 @@ async function archiveSpecs(options = {}) {
                 archivePath: path_1.default.relative(specsDir, archivePath)
             };
             updateArchiveIndex(archiveIndexPath, metadata);
-            // Delete original folder (except current feature)
-            const shouldDelete = !isCurrentFeature;
+            // Delete original folder (ALL folders, including current feature)
+            const shouldDelete = true;
             if (shouldDelete) {
                 fsSync.rmSync(spec.fullPath, { recursive: true, force: true });
                 // Clean up empty parent directories
@@ -433,8 +430,7 @@ OPTIONS:
 BEHAVIOR:
   - Recursively finds all directories containing spec.md
   - Archives ALL spec directories (including current feature)
-  - Current feature's spec directory is NOT deleted
-  - Other spec directories ARE deleted after archiving
+  - ALL spec directories are deleted after archiving
   - archived/ and doc_export/ directories are never touched
   - Updates specs/ARCHIVE.md with archive metadata
 

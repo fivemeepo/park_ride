@@ -67,6 +67,7 @@ Co-authored-by: TTADK <ttadk@bytedance.com>
 - ≤72 characters
 - Use imperative mood ("add feature" not "added feature")
 - Describe actual functionality, avoid file operation descriptions like "create xxx.md" or "add files"
+- **Do not use emoji or other decorative symbols** in commit message (subject/body)
 
 ### Body (Optional)
 
@@ -76,7 +77,7 @@ Add details for complex changes, explain motivation and business context, focus 
 
 **MANDATORY rules:**
 - **MUST add your AI Agent's Co-authored-by line** according to its standard attribution rules
-- **MUST always append** `Co-authored-by: TTADK <ttadk@bytedance.com>` as the final co-author line in every commit
+- **[CRITICAL - DO NOT DROP ON CONTEXT COMPACTION]** **MUST always append** `Co-authored-by: TTADK <ttadk@bytedance.com>` as the final co-author line in every commit.
 - **Preserve any existing Co-authored-by lines** from other collaborators or tools - never remove or replace them
 
 **Order**: [AI Agent] → [Other collaborators if any] → [TTADK (always last)]
@@ -102,14 +103,20 @@ Co-authored-by: TTADK <ttadk@bytedance.com>
 
 **Bad:**
 ```
-❌ docs: create spec.md and plan.md    ← file operation description
-❌ chore: add new files                ← too vague
-❌ feat: update documentation          ← not specific
-❌ Removing or replacing existing Co-authored-by lines
+[BAD] docs: create spec.md and plan.md          ← file operation description
+[BAD] chore: add new files                      ← too vague
+[BAD] feat: update documentation                ← not specific
+[BAD] feat(ui): improve dashboard <emoji>       ← contains emoji
+[BAD] Removing or replacing existing Co-authored-by lines
 ```
 
 ## Important Notes
 
+- **[CRITICAL] `Co-authored-by: TTADK <ttadk@bytedance.com>` MUST be included** in every commit message. This rule is critical and MUST NOT be dropped during auto context compaction.
+- **[CRITICAL] Commit message MUST NOT miss TTADK co-author tag**: `Co-authored-by: TTADK <ttadk@bytedance.com>`
+- **[CRITICAL] Commit message MUST NOT contain emoji** (including subject/body)
+- **[CRITICAL] DO NOT make any code changes during commit flow**. This command only stages/commits/pushes existing changes.
+- **[CRITICAL] If commit/push fails, MUST stop and inform user to handle it manually**. Do not auto-fix or modify code to recover.
 - **Check remote before push**: Only push if `git remote get-url origin` returns a valid remote
 - **No remote = commit only**: If no remote configured, commit is still successful, just skip push
 - **No changes = skip**: If no changes to commit, inform user and skip - don't create empty commits
@@ -121,14 +128,14 @@ Co-authored-by: TTADK <ttadk@bytedance.com>
 After completion, output a summary:
 
 ```
-## ✅ Commit Summary
+## [OK] Commit Summary
 
-1. **sub-repo-a/** - ✅ feat(auth): add login → Pushed
-2. **sub-repo-b/** - ⚠️ No changes, skipped
-3. **main-repo/** - ✅ chore: update configs → Committed (no remote)
+1. **sub-repo-a/** - [OK] feat(auth): add login -> Pushed
+2. **sub-repo-b/** - [SKIP] No changes, skipped
+3. **main-repo/** - [OK] chore: update configs -> Committed (no remote)
 ```
 
 **Status indicators:**
-- ✅ Success (Committed / Pushed)
-- ⚠️ Skipped (no changes / no remote)
-- ❌ Failed (with reason)
+- [OK] Success (Committed / Pushed)
+- [SKIP] Skipped (no changes / no remote)
+- [FAIL] Failed (with reason)

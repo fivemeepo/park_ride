@@ -8,6 +8,7 @@ Real-time parking availability monitor for Transport NSW Park&Ride car parks.
 python run_dashboard.py              # Web dashboard at localhost:8080
 python run_collector.py --all        # Check all carparks once
 python run_collector.py -c Narrabeen --loop --chart  # Monitor with live chart
+python mcp_server.py                 # MCP server (stdio transport)
 ```
 
 ## Environment (.env)
@@ -25,6 +26,7 @@ ANTHROPIC_API_KEY=xxx    # Fallback LLM
 - `parkride/insights.py` - AI insights (Ark → Anthropic fallback)
 - `dashboard/api.py` - REST endpoints
 - `dashboard/static/js/dashboard.js` - Chart.js frontend
+- `mcp_server.py` - MCP server for LLM agent access (stdio transport)
 - `sync_parking_db.sh` - Database sync from remote server
 
 ## Database Sync

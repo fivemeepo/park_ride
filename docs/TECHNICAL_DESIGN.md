@@ -47,6 +47,7 @@ This document describes the technical design for querying Transport NSW Park&Rid
 park_ride/
 ├── run_collector.py        # Data collector entry point
 ├── run_dashboard.py        # Web dashboard entry point
+├── mcp_server.py           # MCP server for LLM agent access
 ├── parkride/               # Main Python package
 │   ├── __init__.py         # Package exports
 │   ├── collector.py        # GraphQL data fetcher
@@ -366,6 +367,36 @@ export ANTHROPIC_API_KEY="your-api-key"
 
 If the API key is not set, a fallback message is displayed prompting configuration.
 
+### 6. MCP Server (mcp_server.py)
+
+Model Context Protocol server exposing parking data to LLM agents via stdio transport. Uses FastMCP with lifespan-managed `ParkingDatabase` and `InsightsGenerator` instances.
+
+#### MCP Tools
+
+| Tool | Read-Only | Description |
+|------|-----------|-------------|
+| `parkride_list_carparks` | yes | List all carpark names in the database |
+| `parkride_get_latest` | yes | Get latest reading per carpark (availability, occupancy, timestamp) |
+| `parkride_get_readings` | yes | Get historical readings with time filters |
+| `parkride_get_insights` | yes | Paginated list of AI-generated insights |
+| `parkride_get_latest_insight` | yes | Most recent AI insight |
+| `parkride_generate_insight` | no | Generate new AI insight via LLM (Ark → Anthropic fallback) |
+| `parkride_fetch_live` | yes | Fetch live data from Transport NSW GraphQL API |
+
+#### Configuration
+
+DB path defaults to `parking_data.db`, configurable via `PARKRIDE_DB_PATH` env var. Add to `.mcp.json`:
+
+```json
+{
+  "parkride": {
+    "command": "python",
+    "args": ["mcp_server.py"],
+    "cwd": "/path/to/park_ride"
+  }
+}
+```
+
 ## Performance
 
 | Metric | Playwright | GraphQL |
@@ -440,6 +471,7 @@ matplotlib>=3.7.0     # Chart generation (CLI)
 pandas>=2.0.0         # Data manipulation (optional)
 flask>=3.0.0          # Web dashboard
 anthropic>=0.18.0     # AI insights (Anthropic Claude API)
+mcp>=1.0.0            # MCP server (LLM agent integration)
 playwright            # Fallback web scraping (original version)
 ```
 
@@ -448,6 +480,7 @@ playwright            # Fallback web scraping (original version)
 - [x] Web dashboard for visualization (implemented)
 - [x] Multiple carpark comparison charts (implemented)
 - [x] AI-powered insights with LLM analysis (implemented)
+- [x] MCP server for LLM agent integration (implemented)
 - [ ] Push notifications (iOS/Android)
 - [ ] Predictive availability based on historical patterns
 - [ ] Alert rules configuration
