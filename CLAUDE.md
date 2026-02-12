@@ -58,6 +58,7 @@ launchctl load ~/Library/LaunchAgents/com.parkride.sync.plist
 - **Insight types**:
   - `morning_recommendation` - Day-specific arrival time recommendations for 7:30-9:30am commute window (default)
   - `commuter_patterns` - Rush hour analysis with morning/evening start+end times, work hour patterns
+  - `anomaly_detection` - Detects abnormal patterns in parking data using statistical analysis (z-score). Compares recent readings against a baseline period. For ≥30 days data: uses first 21 days as baseline; for <30 days: uses first 7 days. Detects occupancy rate anomalies (>2σ deviation) and sudden changes (>20% in 30 min). Works for single carpark or all carparks (cross-carpark correlation).
 - **Day-of-week analysis**: Groups readings by `datetime.weekday()` (0=Monday, 6=Sunday)
 - **Confidence levels**: "very limited" (<7 days), "limited" (7-13), "moderate" (14-27), "high" (28+)
 - **Graceful degradation**: Always generates insights regardless of data availability (never errors for insufficient data)

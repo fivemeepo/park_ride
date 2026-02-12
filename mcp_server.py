@@ -245,8 +245,11 @@ def parkride_generate_insight(
     """Generate a new AI insight using LLM (Ark -> Anthropic fallback). Saves to database.
 
     Args:
-        type: Insight type - "morning_recommendation" (day-specific arrival times) or "commuter_patterns" (rush hour analysis).
-        hours: Hours of historical data to analyze (default 168 = 7 days).
+        type: Insight type - "morning_recommendation" (day-specific arrival times),
+              "commuter_patterns" (rush hour analysis), or
+              "anomaly_detection" (detect abnormal patterns in past 30 days).
+        hours: Hours of historical data to analyze (default 168 = 7 days for morning/commuter,
+               use 720 = 30 days for anomaly_detection).
         carpark: Specific carpark name, or omit for all carparks.
     """
     try:

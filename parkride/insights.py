@@ -68,6 +68,55 @@ class DayOfWeekSummary:
     data_quality: DataQuality
 
 
+@dataclass
+class Anomaly:
+    """A single detected anomaly in parking data."""
+    timestamp: str              # ISO format datetime when anomaly occurred
+    carpark: str                # Carpark name
+    anomaly_type: str           # One of: occupancy_rate, fill_time, pattern_shift, sudden_spike, sudden_drop, weekday_inversion
+    severity: str               # One of: low, medium, high
+    z_score: float              # Statistical deviation (how many std devs from mean)
+    actual_value: float         # The observed value (occupancy rate 0.0-1.0)
+    baseline_mean: float        # Expected value (mean of baseline period)
+    baseline_std: float         # Standard deviation of baseline period
+    description: str            # Human-readable description of the anomaly
+
+
+@dataclass
+class TimeSlotBaseline:
+    """Baseline statistics for a (day_of_week, hour) time slot."""
+    day_of_week: int            # 0=Monday, 6=Sunday
+    hour: int                   # 0-23
+    mean_occupancy_rate: float  # Average occupancy rate (0.0-1.0)
+    std_deviation: float        # Standard deviation
+    sample_count: int           # Number of readings in baseline
+
+
+@dataclass
+class AnomalySummary:
+    """Complete anomaly analysis for a carpark."""
+    carpark: str
+    analysis_start: str         # Start of analysis period
+    analysis_end: str           # End of analysis period
+    baseline_start: str         # Start of baseline period
+    baseline_end: str           # End of baseline period
+    anomalies: list             # List of Anomaly objects
+    total_readings_analyzed: int
+    anomaly_count: int
+    anomalies_by_type: dict     # Count per anomaly type
+    anomalies_by_severity: dict # Count per severity level
+    data_quality: DataQuality   # Reuse existing DataQuality dataclass
+
+
+@dataclass
+class CrossCarparkAnalysis:
+    """Cross-carpark anomaly correlation analysis."""
+    carpark_summaries: dict     # Dict[str, AnomalySummary] - per-carpark results
+    correlated_events: list     # List of {date, carparks, anomaly_types, description}
+    most_anomalous_carpark: Optional[str]  # Carpark with most anomalies
+    system_wide_patterns: list  # Notable patterns across all carparks
+
+
 class InsightsGenerator:
     """Generates AI-powered insights from parking data."""
 
@@ -523,7 +572,7 @@ class InsightsGenerator:
         Generate an insight using the LLM.
 
         Args:
-            insight_type: Type of insight to generate (morning_recommendation, commuter_patterns)
+            insight_type: Type of insight to generate (morning_recommendation, commuter_patterns, anomaly_detection)
             hours: Hours of data to analyze
             carpark: Specific carpark to analyze, or None for all carparks
 
@@ -531,6 +580,99 @@ class InsightsGenerator:
             Dict containing the generated insight
         """
         data_summary = self.prepare_data_summary(hours, carpark=carpark)
+
+        # Handle anomaly_detection insight type
+        if insight_type == "anomaly_detection":
+            # For single carpark anomaly detection
+            if carpark:
+                anomaly_summary = self.prepare_anomaly_summary(hours=hours, carpark=carpark)
+
+                # Handle insufficient data case
+                if anomaly_summary is None or anomaly_summary.data_quality.confidence == "very limited":
+                    return self._generate_limited_anomaly_insight(hours, carpark, data_summary)
+
+                # Build prompt and call LLM
+                prompt = self._build_anomaly_detection_prompt(data_summary, anomaly_summary)
+                response, thinking = self._call_llm(prompt)
+                title, content = self._parse_response(response)
+
+                # Build metadata with anomaly details
+                metadata = {
+                    "hours": hours,
+                    "carpark_filter": carpark,
+                    "confidence": anomaly_summary.data_quality.confidence,
+                    "days_of_data": anomaly_summary.data_quality.total_days,
+                    "anomaly_count": anomaly_summary.anomaly_count,
+                    "anomalies_by_type": anomaly_summary.anomalies_by_type,
+                    "anomalies_by_severity": anomaly_summary.anomalies_by_severity,
+                    "baseline_period": f"{anomaly_summary.baseline_start} to {anomaly_summary.baseline_end}",
+                    "analysis_period": f"{anomaly_summary.analysis_start} to {anomaly_summary.analysis_end}",
+                    "model": self.ark_model if self.ark_api_key else "claude-sonnet-4-20250514"
+                }
+
+                return {
+                    "insight_type": insight_type,
+                    "title": title,
+                    "content": content,
+                    "thinking": thinking,
+                    "data_range_start": data_summary["time_range"]["start"],
+                    "data_range_end": data_summary["time_range"]["end"],
+                    "metadata": metadata
+                }
+            else:
+                # All carparks mode - cross-carpark analysis
+                cross_analysis = self.prepare_cross_carpark_analysis(hours=hours)
+
+                # Check if we have any data
+                if not cross_analysis.carpark_summaries:
+                    return {
+                        "insight_type": insight_type,
+                        "title": "No Data Available",
+                        "content": "No parking data available for cross-carpark anomaly analysis.",
+                        "thinking": None,
+                        "data_range_start": data_summary["time_range"]["start"],
+                        "data_range_end": data_summary["time_range"]["end"],
+                        "metadata": {"hours": hours, "carpark_filter": carpark}
+                    }
+
+                # Build prompt and call LLM
+                prompt = self._build_cross_carpark_prompt(data_summary, cross_analysis)
+                response, thinking = self._call_llm(prompt)
+                title, content = self._parse_response(response)
+
+                # Aggregate stats across all carparks
+                total_anomalies = sum(s.anomaly_count for s in cross_analysis.carpark_summaries.values())
+                all_types = defaultdict(int)
+                all_severities = defaultdict(int)
+                for summary in cross_analysis.carpark_summaries.values():
+                    for t, c in summary.anomalies_by_type.items():
+                        all_types[t] += c
+                    for s, c in summary.anomalies_by_severity.items():
+                        all_severities[s] += c
+
+                # Build metadata
+                metadata = {
+                    "hours": hours,
+                    "carpark_filter": None,
+                    "carparks_analyzed": list(cross_analysis.carpark_summaries.keys()),
+                    "anomaly_count": total_anomalies,
+                    "anomalies_by_type": dict(all_types),
+                    "anomalies_by_severity": dict(all_severities),
+                    "correlated_events": len(cross_analysis.correlated_events),
+                    "most_anomalous_carpark": cross_analysis.most_anomalous_carpark,
+                    "system_wide_patterns": cross_analysis.system_wide_patterns,
+                    "model": self.ark_model if self.ark_api_key else "claude-sonnet-4-20250514"
+                }
+
+                return {
+                    "insight_type": insight_type,
+                    "title": title,
+                    "content": content,
+                    "thinking": thinking,
+                    "data_range_start": data_summary["time_range"]["start"],
+                    "data_range_end": data_summary["time_range"]["end"],
+                    "metadata": metadata
+                }
 
         # For commuter-focused insights, prepare day-of-week analysis
         day_of_week_summary = None
@@ -625,6 +767,52 @@ class InsightsGenerator:
                 "confidence": "very limited",
                 "days_of_data": 0,
                 "note": "More data will improve recommendation accuracy"
+            }
+        }
+
+    def _generate_limited_anomaly_insight(self, hours: int, carpark: str, data_summary: dict) -> dict:
+        """
+        Generate anomaly detection insight when data is insufficient (<7 days).
+
+        Cannot establish meaningful baseline with less than 7 days of data.
+        Returns general guidance with "very limited" confidence.
+
+        Args:
+            hours: Requested hours of data
+            carpark: Carpark name
+            data_summary: Data summary from prepare_data_summary()
+
+        Returns:
+            Dict containing limited anomaly insight
+        """
+        title = "Limited Analysis Available"
+        content = (
+            f"Insufficient historical data for statistical anomaly detection at {carpark}.\n\n"
+            "Anomaly detection requires at least 7 days of data to establish a meaningful baseline. "
+            "Currently, there is not enough data to identify patterns or deviations.\n\n"
+            "**What you can do:**\n"
+            "- Continue collecting data for this carpark\n"
+            "- Check back in a few days when more historical data is available\n"
+            "- Use the `morning_recommendation` or `commuter_patterns` insight types which can provide "
+            "general guidance even with limited data\n\n"
+            "**Note:** This limitation ensures recommendations are statistically meaningful "
+            "rather than based on insufficient samples."
+        )
+
+        return {
+            "insight_type": "anomaly_detection",
+            "title": title,
+            "content": content,
+            "thinking": None,
+            "data_range_start": data_summary["time_range"]["start"],
+            "data_range_end": data_summary["time_range"]["end"],
+            "metadata": {
+                "hours": hours,
+                "carpark_filter": carpark,
+                "confidence": "very limited",
+                "days_of_data": 0,
+                "anomaly_count": 0,
+                "note": "Minimum 7 days required for baseline calculation"
             }
         }
 
@@ -901,3 +1089,649 @@ CONTENT: [Your analysis here]"""
             The ID of the saved insight
         """
         return self.db.insert_insight(insight)
+
+    def _calculate_z_score(self, value: float, mean: float, std: float) -> float:
+        """
+        Calculate z-score for anomaly detection.
+
+        Args:
+            value: The observed value
+            mean: The baseline mean
+            std: The baseline standard deviation
+
+        Returns:
+            Z-score capped at ±10 to avoid floating point issues
+        """
+        if std == 0:
+            return 0.0
+        z = (value - mean) / std
+        # Cap at ±10 to avoid extreme values
+        return max(-10.0, min(10.0, z))
+
+    def _get_severity(self, z_score: float) -> str:
+        """
+        Get severity level based on z-score magnitude.
+
+        Args:
+            z_score: The z-score (deviation from mean)
+
+        Returns:
+            Severity: "low" (2.0-2.5), "medium" (2.5-3.0), "high" (≥3.0)
+        """
+        abs_z = abs(z_score)
+        if abs_z >= 3.0:
+            return "high"
+        elif abs_z >= 2.5:
+            return "medium"
+        else:
+            return "low"
+
+    def _calculate_time_slot_baselines(
+        self,
+        readings: list,
+        baseline_end: datetime,
+        total_spots: int
+    ) -> dict:
+        """
+        Calculate baseline statistics for each (day_of_week, hour) time slot.
+
+        Args:
+            readings: List of reading dicts with timestamp, occupancy, etc.
+            baseline_end: End of baseline period (readings after this are excluded)
+            total_spots: Total parking spots for occupancy rate calculation
+
+        Returns:
+            Dict keyed by (day_of_week, hour) tuple with TimeSlotBaseline values
+        """
+        from statistics import mean, stdev
+
+        # Group readings by time slot
+        slot_readings = defaultdict(list)
+
+        for r in readings:
+            ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+            if ts > baseline_end:
+                continue  # Skip readings after baseline period
+
+            day_of_week = ts.weekday()
+            hour = ts.hour
+            if total_spots > 0:
+                rate = r["occupancy"] / total_spots
+                slot_readings[(day_of_week, hour)].append(rate)
+
+        # Calculate baseline for each slot
+        baselines = {}
+        for (day, hour), rates in slot_readings.items():
+            if len(rates) >= 3:  # Need at least 3 samples for meaningful stats
+                avg = mean(rates)
+                std = stdev(rates) if len(rates) > 1 else 0.0
+                baselines[(day, hour)] = TimeSlotBaseline(
+                    day_of_week=day,
+                    hour=hour,
+                    mean_occupancy_rate=avg,
+                    std_deviation=std,
+                    sample_count=len(rates)
+                )
+
+        return baselines
+
+    def _detect_occupancy_rate_anomalies(
+        self,
+        readings: list,
+        baselines: dict,
+        total_spots: int,
+        carpark: str,
+        analysis_start: datetime
+    ) -> list:
+        """
+        Detect occupancy rate anomalies in the analysis period.
+
+        Args:
+            readings: List of reading dicts
+            baselines: Dict of TimeSlotBaseline keyed by (day_of_week, hour)
+            total_spots: Total parking spots
+            carpark: Carpark name
+            analysis_start: Start of analysis period (readings before this are skipped)
+
+        Returns:
+            List of Anomaly objects for detected anomalies
+        """
+        anomalies = []
+        z_threshold = 2.0  # Z-score threshold for anomaly
+        abs_threshold = 0.55  # Absolute deviation threshold (55%)
+
+        for r in readings:
+            ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+            if ts < analysis_start:
+                continue  # Only analyze readings in analysis period
+
+            day_of_week = ts.weekday()
+            hour = ts.hour
+            slot_key = (day_of_week, hour)
+
+            if slot_key not in baselines:
+                continue  # No baseline for this slot
+
+            baseline = baselines[slot_key]
+            if total_spots <= 0:
+                continue
+
+            actual_rate = r["occupancy"] / total_spots
+
+            # Skip invalid data (occupancy > capacity or negative)
+            if actual_rate > 1.0 or actual_rate < 0.0:
+                continue
+
+            z_score = self._calculate_z_score(
+                actual_rate,
+                baseline.mean_occupancy_rate,
+                baseline.std_deviation
+            )
+            abs_deviation = abs(actual_rate - baseline.mean_occupancy_rate)
+
+            # Require BOTH z-score AND absolute deviation thresholds
+            # This prevents flagging small deviations that only appear significant
+            # due to low variance in the baseline (limited data)
+            if abs(z_score) > z_threshold and abs_deviation > abs_threshold:
+                direction = "higher" if z_score > 0 else "lower"
+                anomalies.append(Anomaly(
+                    timestamp=r["timestamp"],
+                    carpark=carpark,
+                    anomaly_type="occupancy_rate",
+                    severity=self._get_severity(z_score),
+                    z_score=round(z_score, 2),
+                    actual_value=round(actual_rate, 3),
+                    baseline_mean=round(baseline.mean_occupancy_rate, 3),
+                    baseline_std=round(baseline.std_deviation, 3),
+                    description=f"Occupancy {direction} than expected on {DAY_NAMES[day_of_week]} at {hour:02d}:00"
+                ))
+
+        return anomalies
+
+    def prepare_anomaly_summary(
+        self,
+        hours: int = 720,
+        carpark: Optional[str] = None
+    ) -> Optional[AnomalySummary]:
+        """
+        Prepare anomaly analysis summary for a carpark.
+
+        Args:
+            hours: Number of hours of data to analyze (default 720 = 30 days)
+            carpark: Specific carpark to analyze (required for single-carpark mode)
+
+        Returns:
+            AnomalySummary with detected anomalies and statistics,
+            or None if carpark not specified or no data
+        """
+        if not carpark:
+            return None
+
+        readings = self.db.get_readings(carpark=carpark, hours=hours)
+        if not readings:
+            return None
+
+        # Determine total spots
+        total_spots = readings[0]["total_spots"] if readings else 0
+        if total_spots <= 0:
+            return None
+
+        # Calculate date range and distinct dates
+        timestamps = [datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S") for r in readings]
+        distinct_dates = set(ts.date() for ts in timestamps)
+        total_days = len(distinct_dates)
+
+        end_time = max(timestamps)
+        start_time = min(timestamps)
+
+        # Determine baseline and analysis periods based on data availability
+        # ≥30 days: baseline = first 21 days, analysis = last 9 days
+        # <30 days: baseline = first 7 days, analysis = remaining days
+        # <7 days: insufficient data
+
+        if total_days >= 30:
+            baseline_days = 21
+            confidence = "high"
+        elif total_days >= 14:
+            baseline_days = 7
+            confidence = "moderate"
+        elif total_days >= 7:
+            baseline_days = 7
+            confidence = "limited"
+        else:
+            # Insufficient data - return minimal summary
+            return AnomalySummary(
+                carpark=carpark,
+                analysis_start=start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                analysis_end=end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                baseline_start=start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                baseline_end=end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                anomalies=[],
+                total_readings_analyzed=len(readings),
+                anomaly_count=0,
+                anomalies_by_type={},
+                anomalies_by_severity={},
+                data_quality=DataQuality(
+                    total_days=total_days,
+                    min_days_per_weekday=0,
+                    confidence="very limited",
+                    gaps=["Insufficient data for baseline calculation"]
+                )
+            )
+
+        # Split into baseline and analysis periods
+        baseline_end = start_time + timedelta(days=baseline_days)
+        analysis_start = baseline_end
+
+        # Calculate baselines from the baseline period
+        baselines = self._calculate_time_slot_baselines(readings, baseline_end, total_spots)
+
+        # Detect anomalies in the analysis period
+        occupancy_anomalies = self._detect_occupancy_rate_anomalies(
+            readings, baselines, total_spots, carpark, analysis_start
+        )
+        sudden_anomalies = self._detect_sudden_changes(
+            readings, total_spots, carpark, analysis_start
+        )
+
+        # Combine all anomalies
+        all_anomalies = occupancy_anomalies + sudden_anomalies
+
+        # Aggregate by type and severity
+        anomalies_by_type = defaultdict(int)
+        anomalies_by_severity = defaultdict(int)
+        for a in all_anomalies:
+            anomalies_by_type[a.anomaly_type] += 1
+            anomalies_by_severity[a.severity] += 1
+
+        # Build data quality metrics
+        readings_by_day = defaultdict(list)
+        for r in readings:
+            ts = datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S")
+            readings_by_day[ts.weekday()].append(r)
+
+        gaps = []
+        for day_num in range(7):
+            if day_num not in readings_by_day or not readings_by_day[day_num]:
+                gaps.append(f"No {DAY_NAMES[day_num]} data")
+
+        data_quality = DataQuality(
+            total_days=total_days,
+            min_days_per_weekday=min(len(set(datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S").date()
+                                             for r in readings_by_day.get(d, [])))
+                                     for d in range(7)) if readings_by_day else 0,
+            confidence=confidence,
+            gaps=gaps
+        )
+
+        return AnomalySummary(
+            carpark=carpark,
+            analysis_start=analysis_start.strftime("%Y-%m-%d %H:%M:%S"),
+            analysis_end=end_time.strftime("%Y-%m-%d %H:%M:%S"),
+            baseline_start=start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            baseline_end=baseline_end.strftime("%Y-%m-%d %H:%M:%S"),
+            anomalies=all_anomalies,
+            total_readings_analyzed=len([r for r in readings
+                                         if datetime.strptime(r["timestamp"], "%Y-%m-%d %H:%M:%S") >= analysis_start]),
+            anomaly_count=len(all_anomalies),
+            anomalies_by_type=dict(anomalies_by_type),
+            anomalies_by_severity=dict(anomalies_by_severity),
+            data_quality=data_quality
+        )
+
+    def _detect_sudden_changes(
+        self,
+        readings: list,
+        total_spots: int,
+        carpark: str,
+        analysis_start: datetime
+    ) -> list:
+        """
+        Detect sudden spikes or drops in occupancy (>20% change in 30 min).
+
+        Args:
+            readings: List of reading dicts sorted by timestamp
+            total_spots: Total parking spots
+            carpark: Carpark name
+            analysis_start: Start of analysis period
+
+        Returns:
+            List of Anomaly objects for sudden changes
+        """
+        anomalies = []
+        if total_spots <= 0 or len(readings) < 2:
+            return anomalies
+
+        # Sort readings by timestamp
+        sorted_readings = sorted(readings, key=lambda r: r["timestamp"])
+        change_threshold = 0.20  # 20% change
+
+        for i in range(1, len(sorted_readings)):
+            curr = sorted_readings[i]
+            prev = sorted_readings[i - 1]
+
+            curr_ts = datetime.strptime(curr["timestamp"], "%Y-%m-%d %H:%M:%S")
+            prev_ts = datetime.strptime(prev["timestamp"], "%Y-%m-%d %H:%M:%S")
+
+            if curr_ts < analysis_start:
+                continue
+
+            # Check if readings are within 30 minutes of each other
+            time_diff = (curr_ts - prev_ts).total_seconds() / 60
+            if time_diff > 30:
+                continue
+
+            curr_rate = curr["occupancy"] / total_spots
+            prev_rate = prev["occupancy"] / total_spots
+            change = curr_rate - prev_rate
+
+            if abs(change) > change_threshold:
+                if change > 0:
+                    anomaly_type = "sudden_spike"
+                    description = f"Sudden spike: occupancy increased {abs(change)*100:.0f}% in {time_diff:.0f} minutes"
+                else:
+                    anomaly_type = "sudden_drop"
+                    description = f"Sudden drop: occupancy decreased {abs(change)*100:.0f}% in {time_diff:.0f} minutes"
+
+                anomalies.append(Anomaly(
+                    timestamp=curr["timestamp"],
+                    carpark=carpark,
+                    anomaly_type=anomaly_type,
+                    severity="high",  # Sudden changes are always high severity
+                    z_score=0.0,  # Not z-score based
+                    actual_value=round(curr_rate, 3),
+                    baseline_mean=round(prev_rate, 3),  # Using prev as reference
+                    baseline_std=0.0,
+                    description=description
+                ))
+
+        return anomalies
+
+    def _build_anomaly_detection_prompt(
+        self,
+        data_summary: dict,
+        anomaly_summary: AnomalySummary
+    ) -> str:
+        """
+        Build LLM prompt for anomaly detection insight.
+
+        Args:
+            data_summary: General data summary from prepare_data_summary()
+            anomaly_summary: AnomalySummary from prepare_anomaly_summary()
+
+        Returns:
+            Prompt string for LLM
+        """
+        time_range = data_summary["time_range"]
+        carpark = anomaly_summary.carpark
+
+        # Build anomaly list
+        anomaly_lines = []
+        for i, a in enumerate(anomaly_summary.anomalies[:10], 1):  # Limit to top 10
+            anomaly_lines.append(
+                f"{i}. **{a.severity.upper()}** - {a.anomaly_type.replace('_', ' ').title()} "
+                f"({a.timestamp}): {a.description}"
+            )
+
+        anomaly_text = "\n".join(anomaly_lines) if anomaly_lines else "No anomalies detected"
+
+        # Summary stats
+        stats_text = f"""Anomaly Summary:
+- Total anomalies detected: {anomaly_summary.anomaly_count}
+- By type: {anomaly_summary.anomalies_by_type}
+- By severity: {anomaly_summary.anomalies_by_severity}
+- Baseline period: {anomaly_summary.baseline_start} to {anomaly_summary.baseline_end}
+- Analysis period: {anomaly_summary.analysis_start} to {anomaly_summary.analysis_end}
+- Readings analyzed: {anomaly_summary.total_readings_analyzed}"""
+
+        confidence = anomaly_summary.data_quality.confidence
+        confidence_note = f"Data confidence: {confidence} ({anomaly_summary.data_quality.total_days} days of data)"
+
+        return f"""Analyze detected anomalies in parking data and provide actionable insights.
+
+Carpark: {carpark}
+Analysis Period: {time_range['start']} to {time_range['end']}
+{confidence_note}
+
+{stats_text}
+
+Detected Anomalies (sorted by severity):
+{anomaly_text}
+
+Please provide:
+1. A short title (max 10 words) summarizing the anomaly findings
+2. An analysis covering:
+   - Overview of detected anomalies (if any)
+   - **IMPORTANT: For each anomaly mentioned, ALWAYS include the specific date and time (e.g., "Feb 10 at 17:00")**
+   - Most significant anomalies with their exact timestamps and potential causes
+   - Patterns in the anomalies (specific days, times, or recurring issues)
+   - Recommendations for operators or commuters
+   - If no anomalies: confirm stable operations
+
+Consider:
+- High severity anomalies (≥3 std dev) warrant immediate attention
+- Sudden spikes/drops may indicate events or data issues
+- Multiple anomalies on the same day may be correlated
+- Always mention when each anomaly occurred so operators can investigate
+
+Format your response as:
+TITLE: [Your title here]
+CONTENT: [Your analysis here]"""
+
+    def _detect_correlated_events(
+        self,
+        carpark_summaries: dict
+    ) -> list:
+        """
+        Detect correlated anomaly events across multiple carparks.
+
+        Groups anomalies by date and identifies when 2+ carparks have
+        anomalies on the same date, suggesting system-wide events.
+
+        Args:
+            carpark_summaries: Dict of AnomalySummary keyed by carpark name
+
+        Returns:
+            List of correlated event dicts with date, carparks, anomaly_types, description
+        """
+        # Group anomalies by date across all carparks
+        anomalies_by_date = defaultdict(list)
+
+        for carpark_name, summary in carpark_summaries.items():
+            if summary is None:
+                continue
+            for anomaly in summary.anomalies:
+                # Extract date from timestamp
+                date = anomaly.timestamp.split(" ")[0]
+                anomalies_by_date[date].append({
+                    "carpark": carpark_name,
+                    "anomaly": anomaly
+                })
+
+        # Find dates with anomalies in 2+ carparks
+        correlated_events = []
+        for date, anomaly_list in sorted(anomalies_by_date.items()):
+            # Get unique carparks with anomalies on this date
+            carparks = list(set(a["carpark"] for a in anomaly_list))
+            if len(carparks) >= 2:
+                # Collect anomaly types for this date
+                anomaly_types = list(set(a["anomaly"].anomaly_type for a in anomaly_list))
+                severities = [a["anomaly"].severity for a in anomaly_list]
+                max_severity = "high" if "high" in severities else ("medium" if "medium" in severities else "low")
+
+                correlated_events.append({
+                    "date": date,
+                    "carparks": carparks,
+                    "anomaly_types": anomaly_types,
+                    "anomaly_count": len(anomaly_list),
+                    "max_severity": max_severity,
+                    "description": f"Anomalies detected across {len(carparks)} carparks on {date}: "
+                                   f"{', '.join(carparks)}"
+                })
+
+        return correlated_events
+
+    def prepare_cross_carpark_analysis(
+        self,
+        hours: int = 720
+    ) -> CrossCarparkAnalysis:
+        """
+        Prepare cross-carpark anomaly correlation analysis.
+
+        Analyzes all carparks for anomalies and identifies system-wide patterns.
+
+        Args:
+            hours: Number of hours of data to analyze (default 720 = 30 days)
+
+        Returns:
+            CrossCarparkAnalysis with per-carpark summaries and correlated events
+        """
+        # Get all available carparks
+        carparks = self.db.get_available_carparks()
+
+        # Prepare anomaly summary for each carpark
+        carpark_summaries = {}
+        for carpark_name in carparks:
+            summary = self.prepare_anomaly_summary(hours=hours, carpark=carpark_name)
+            if summary is not None:
+                carpark_summaries[carpark_name] = summary
+
+        # Detect correlated events across carparks
+        correlated_events = self._detect_correlated_events(carpark_summaries)
+
+        # Find most anomalous carpark
+        most_anomalous = None
+        max_anomalies = 0
+        for carpark_name, summary in carpark_summaries.items():
+            if summary.anomaly_count > max_anomalies:
+                max_anomalies = summary.anomaly_count
+                most_anomalous = carpark_name
+
+        # Identify system-wide patterns
+        system_wide_patterns = []
+
+        # Check if most anomalies occur on specific days
+        day_counts = defaultdict(int)
+        for summary in carpark_summaries.values():
+            for anomaly in summary.anomalies:
+                ts = datetime.strptime(anomaly.timestamp, "%Y-%m-%d %H:%M:%S")
+                day_counts[DAY_NAMES[ts.weekday()]] += 1
+
+        if day_counts:
+            busiest_day = max(day_counts.items(), key=lambda x: x[1])
+            if busiest_day[1] >= 3:  # At least 3 anomalies
+                system_wide_patterns.append(
+                    f"Most anomalies occur on {busiest_day[0]}s ({busiest_day[1]} anomalies)"
+                )
+
+        # Check if there are widespread sudden changes
+        sudden_count = sum(
+            1 for s in carpark_summaries.values()
+            for a in s.anomalies
+            if a.anomaly_type in ("sudden_spike", "sudden_drop")
+        )
+        if sudden_count >= 2:
+            system_wide_patterns.append(
+                f"{sudden_count} sudden changes detected across carparks"
+            )
+
+        # Check correlation events significance
+        if len(correlated_events) >= 2:
+            system_wide_patterns.append(
+                f"{len(correlated_events)} dates with multi-carpark anomalies detected"
+            )
+
+        return CrossCarparkAnalysis(
+            carpark_summaries=carpark_summaries,
+            correlated_events=correlated_events,
+            most_anomalous_carpark=most_anomalous,
+            system_wide_patterns=system_wide_patterns
+        )
+
+    def _build_cross_carpark_prompt(
+        self,
+        data_summary: dict,
+        analysis: CrossCarparkAnalysis
+    ) -> str:
+        """
+        Build LLM prompt for cross-carpark anomaly analysis.
+
+        Args:
+            data_summary: General data summary from prepare_data_summary()
+            analysis: CrossCarparkAnalysis from prepare_cross_carpark_analysis()
+
+        Returns:
+            Prompt string for LLM
+        """
+        time_range = data_summary["time_range"]
+
+        # Build per-carpark summary
+        carpark_lines = []
+        for carpark_name, summary in analysis.carpark_summaries.items():
+            if summary.anomaly_count > 0:
+                types_str = ", ".join(f"{k}:{v}" for k, v in summary.anomalies_by_type.items())
+                carpark_lines.append(
+                    f"- **{carpark_name}**: {summary.anomaly_count} anomalies ({types_str})"
+                )
+            else:
+                carpark_lines.append(f"- **{carpark_name}**: No anomalies detected")
+
+        carpark_text = "\n".join(carpark_lines) if carpark_lines else "No carparks analyzed"
+
+        # Build correlated events summary
+        correlated_lines = []
+        for event in analysis.correlated_events[:5]:  # Limit to top 5
+            correlated_lines.append(
+                f"- {event['date']}: {event['anomaly_count']} anomalies across "
+                f"{', '.join(event['carparks'])} ({event['max_severity']} severity)"
+            )
+
+        correlated_text = "\n".join(correlated_lines) if correlated_lines else "No correlated events detected"
+
+        # System-wide patterns
+        patterns_text = "\n".join(f"- {p}" for p in analysis.system_wide_patterns) if analysis.system_wide_patterns else "No system-wide patterns identified"
+
+        # Total stats
+        total_anomalies = sum(s.anomaly_count for s in analysis.carpark_summaries.values())
+        carparks_with_anomalies = sum(1 for s in analysis.carpark_summaries.values() if s.anomaly_count > 0)
+
+        return f"""Analyze detected anomalies across ALL carparks and provide system-wide insights.
+
+Analysis Period: {time_range['start']} to {time_range['end']}
+
+Summary Statistics:
+- Total carparks analyzed: {len(analysis.carpark_summaries)}
+- Carparks with anomalies: {carparks_with_anomalies}
+- Total anomalies detected: {total_anomalies}
+- Most anomalous carpark: {analysis.most_anomalous_carpark or 'N/A'}
+- Correlated events (multi-carpark): {len(analysis.correlated_events)}
+
+Per-Carpark Summary:
+{carpark_text}
+
+Correlated Events (anomalies on same date across carparks):
+{correlated_text}
+
+System-Wide Patterns:
+{patterns_text}
+
+Please provide:
+1. A short title (max 10 words) summarizing system-wide anomaly status
+2. A comprehensive analysis covering:
+   - Overview of anomalies across the parking network
+   - **IMPORTANT: Always include specific dates and times when mentioning anomalies (e.g., "Feb 10 at 17:00")**
+   - Most affected carparks with their anomaly timestamps and potential reasons
+   - Correlated events that may indicate system-wide issues (events, weather, holidays)
+   - Day-of-week or time patterns across carparks
+   - Recommendations for operators
+   - If no anomalies: confirm stable system-wide operations
+
+Consider:
+- Multiple carparks with anomalies on the same day may indicate external events
+- Patterns specific to certain carparks vs system-wide patterns
+- Always mention when each anomaly occurred so operators can investigate
+- High severity anomalies that warrant immediate attention
+
+Format your response as:
+TITLE: [Your title here]
+CONTENT: [Your analysis here]"""

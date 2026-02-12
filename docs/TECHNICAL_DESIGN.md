@@ -332,6 +332,76 @@ class InsightsGenerator:
     def prepare_data_summary(hours: int = 24) -> dict
     def generate_insight(insight_type: str, hours: int) -> dict
     def save_insight(insight: dict) -> int
+    # Anomaly detection methods
+    def prepare_anomaly_summary(hours: int = 720, carpark: str = None) -> AnomalySummary
+    def prepare_cross_carpark_analysis(hours: int = 720) -> CrossCarparkAnalysis
+```
+
+#### Insight Types
+
+| Type | Description | Default Hours |
+|------|-------------|---------------|
+| `morning_recommendation` | Day-specific arrival time recommendations for 7:30-9:30am | 168 (7 days) |
+| `commuter_patterns` | Rush hour analysis with morning/evening start+end times | 168 (7 days) |
+| `anomaly_detection` | Statistical anomaly detection comparing against baseline | 720 (30 days) |
+
+#### Anomaly Detection
+
+The anomaly detection system uses statistical methods to identify unusual patterns:
+
+**Baseline Calculation:**
+- ≥30 days of data: First 21 days used as baseline
+- <30 days of data: First 7 days used as baseline
+- <7 days of data: Insufficient for baseline (returns limited insight)
+
+**Anomaly Types:**
+
+| Type | Detection Criteria | Severity |
+|------|-------------------|----------|
+| `occupancy_rate` | Reading deviates >2σ from time-slot baseline | Based on z-score |
+| `sudden_spike` | >20% occupancy increase in 30 minutes | Always "high" |
+| `sudden_drop` | >20% occupancy decrease in 30 minutes | Always "high" |
+
+**Severity Levels:**
+- `low`: 2.0 ≤ |z| < 2.5
+- `medium`: 2.5 ≤ |z| < 3.0
+- `high`: |z| ≥ 3.0
+
+**Dataclasses:**
+
+```python
+@dataclass
+class Anomaly:
+    timestamp: str              # When anomaly occurred
+    carpark: str                # Carpark name
+    anomaly_type: str           # occupancy_rate, sudden_spike, sudden_drop
+    severity: str               # low, medium, high
+    z_score: float              # Statistical deviation
+    actual_value: float         # Observed occupancy rate
+    baseline_mean: float        # Expected value
+    baseline_std: float         # Baseline standard deviation
+    description: str            # Human-readable description
+
+@dataclass
+class AnomalySummary:
+    carpark: str
+    analysis_start: str
+    analysis_end: str
+    baseline_start: str
+    baseline_end: str
+    anomalies: list[Anomaly]
+    total_readings_analyzed: int
+    anomaly_count: int
+    anomalies_by_type: dict
+    anomalies_by_severity: dict
+    data_quality: DataQuality
+
+@dataclass
+class CrossCarparkAnalysis:
+    carpark_summaries: dict[str, AnomalySummary]
+    correlated_events: list[dict]  # Multi-carpark anomalies on same date
+    most_anomalous_carpark: str
+    system_wide_patterns: list[str]
 ```
 
 #### Data Flow

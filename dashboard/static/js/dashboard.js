@@ -817,7 +817,8 @@ class DashboardApp {
 
         this.setGeneratingState(true);
         try {
-            const hours = this.config.settings.timeRange || 24;
+            // Use 720 hours (30 days) for anomaly_detection, otherwise use selected time range
+            const hours = insightType === 'anomaly_detection' ? 720 : (this.config.settings.timeRange || 24);
             const response = await fetch('/api/insights/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
