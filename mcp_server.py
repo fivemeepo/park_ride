@@ -1,90 +1,80 @@
 #!/usr/bin/env python3
 """
-Park&Ride MCP Server - Exposes parking data to LLM agents.
+Park&Ride MCP Server - Exposes parking data to LLM agents via HTTP API.
 
-Provides tools for querying parking availability, historical readings,
-AI-generated insights, and live data from Transport NSW.
+Connects to the Park&Ride dashboard REST API, allowing remote usage
+without direct database access.
 
 Usage:
     python mcp_server.py                    # Start via stdio
     MCP Inspector: npx @modelcontextprotocol/inspector python mcp_server.py
+
+Environment:
+    PARKRIDE_API_URL: Dashboard base URL (default: http://localhost:8080)
 """
 
 import json
 import os
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from mcp.server.fastmcp import Context, FastMCP
+import httpx
+from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from parkride.storage import ParkingDatabase
-from parkride.insights import InsightsGenerator
 
+API_URL = os.environ.get("PARKRIDE_API_URL", "http://localhost:8080")
 
-# --- Lifespan & Context ---
-
-@dataclass
-class AppContext:
-    db: ParkingDatabase
-    insights: InsightsGenerator
-
-
-@asynccontextmanager
-async def app_lifespan(server: FastMCP) -> AsyncIterator[AppContext]:
-    db_path = os.environ.get("PARKRIDE_DB_PATH", "parking_data.db")
-    db = ParkingDatabase(db_path)
-    insights = InsightsGenerator(db)
-    try:
-        yield AppContext(db=db, insights=insights)
-    finally:
-        db.close()
+# Transport NSW GraphQL API (for live fetch, called directly)
+GRAPHQL_ENDPOINT = "https://transportnsw.info/api/graphql"
+GRAPHQL_QUERY = """query getLocations {
+    result: widgets {
+        pnrLocations {
+            name
+            spots
+            occupancy
+        }
+    }
+}"""
 
 
 mcp = FastMCP(
     "Park&Ride",
     instructions="Real-time and historical parking availability for Transport NSW Park&Ride car parks.",
-    lifespan=app_lifespan,
 )
 
 
 # --- Helpers ---
 
-def _get_ctx(ctx: Context) -> AppContext:
-    return ctx.request_context.lifespan_context
+def _api(path: str, **params) -> dict:
+    """GET request to dashboard API."""
+    resp = httpx.get(f"{API_URL}/api{path}", params=params, timeout=30)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _api_post(path: str, data: dict) -> dict:
+    """POST request to dashboard API."""
+    resp = httpx.post(f"{API_URL}/api{path}", json=data, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
 
 
 def _handle_error(e: Exception) -> str:
     return f"Error: {type(e).__name__}: {e}"
 
 
-def _format_readings(readings: list[dict], fmt: str = "markdown") -> str:
-    if not readings:
-        return "No readings found."
-    if fmt == "json":
-        return json.dumps(readings, indent=2, default=str)
-    lines = [f"| Timestamp | Carpark | Total | Occupied | Available |", "| --- | --- | ---: | ---: | ---: |"]
-    for r in readings:
-        lines.append(
-            f"| {r['timestamp']} | {r['carpark_name']} | {r['total_spots']} | {r['occupancy']} | {r['available']} |"
-        )
-    return "\n".join(lines)
-
-
 # --- Tools ---
 
 @mcp.tool(annotations=ToolAnnotations(title="List Carparks", read_only_hint=True))
-def parkride_list_carparks(ctx: Context) -> str:
+def parkride_list_carparks() -> str:
     """List all carpark names in the database."""
     try:
-        app = _get_ctx(ctx)
-        carparks = app.db.get_available_carparks()
+        data = _api("/carparks")
+        carparks = data.get("carparks", [])
         if not carparks:
-            return "No carparks found in the database."
-        return "\n".join(f"- {name}" for name in carparks)
+            return json.dumps({"carparks": []})
+        return json.dumps({"carparks": carparks}, indent=2)
     except Exception as e:
         return _handle_error(e)
 
@@ -92,8 +82,7 @@ def parkride_list_carparks(ctx: Context) -> str:
 @mcp.tool(annotations=ToolAnnotations(title="Get Latest Readings", read_only_hint=True))
 def parkride_get_latest(
     carparks: list[str],
-    response_format: str = "markdown",
-    ctx: Context = None,
+    response_format: str = "json",
 ) -> str:
     """Get the latest reading for each specified carpark.
 
@@ -102,25 +91,21 @@ def parkride_get_latest(
         response_format: "markdown" (default) or "json".
     """
     try:
-        app = _get_ctx(ctx)
-        results = []
-        for name in carparks:
-            reading = app.db.get_latest_reading(name)
-            if reading:
-                results.append(reading)
+        data = _api("/latest", carpark=",".join(carparks))
+        latest = data.get("latest", {})
 
-        if not results:
-            return "No readings found for the specified carparks."
+        if not latest:
+            return json.dumps({"readings": []})
 
-        if response_format == "json":
-            return json.dumps(results, indent=2, default=str)
+        if response_format != "json":
+            lines = ["| Carpark | Available | Occupied | Total | Last Updated |", "| --- | ---: | ---: | ---: | --- |"]
+            for name, r in latest.items():
+                lines.append(
+                    f"| {name} | {r['available']} | {r['occupancy']} | {r['total_spots']} | {r['timestamp']} |"
+                )
+            return "\n".join(lines)
 
-        lines = ["| Carpark | Available | Occupied | Total | Last Updated |", "| --- | ---: | ---: | ---: | --- |"]
-        for r in results:
-            lines.append(
-                f"| {r['carpark_name']} | {r['available']} | {r['occupancy']} | {r['total_spots']} | {r['timestamp']} |"
-            )
-        return "\n".join(lines)
+        return json.dumps(latest, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
@@ -132,8 +117,7 @@ def parkride_get_readings(
     start: Optional[str] = None,
     end: Optional[str] = None,
     limit: Optional[int] = None,
-    response_format: str = "markdown",
-    ctx: Context = None,
+    response_format: str = "json",
 ) -> str:
     """Get historical readings for a carpark with time filters.
 
@@ -146,18 +130,38 @@ def parkride_get_readings(
         response_format: "markdown" (default) or "json".
     """
     try:
-        app = _get_ctx(ctx)
-        start_time = datetime.fromisoformat(start) if start else None
-        end_time = datetime.fromisoformat(end) if end else None
+        params = {"carpark": carpark}
+        if hours is not None:
+            params["hours"] = hours
+        if start:
+            params["start"] = start
+        if end:
+            params["end"] = end
 
-        readings = app.db.get_readings(
-            carpark=carpark,
-            start_time=start_time,
-            end_time=end_time,
-            hours=hours,
-            limit=limit,
-        )
-        return _format_readings(readings, response_format)
+        data = _api("/readings", **params)
+        readings_by_carpark = data.get("readings", {})
+
+        # Flatten readings from all matched carparks
+        all_readings = []
+        for cp_name, readings in readings_by_carpark.items():
+            for r in readings:
+                all_readings.append({**r, "carpark_name": cp_name})
+
+        if limit:
+            all_readings = all_readings[:limit]
+
+        if not all_readings:
+            return json.dumps({"readings": []})
+
+        if response_format != "json":
+            lines = ["| Timestamp | Carpark | Total | Occupied | Available |", "| --- | --- | ---: | ---: | ---: |"]
+            for r in all_readings:
+                lines.append(
+                    f"| {r['timestamp']} | {r['carpark_name']} | {r['total_spots']} | {r['occupancy']} | {r['available']} |"
+                )
+            return "\n".join(lines)
+
+        return json.dumps(all_readings, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
@@ -166,8 +170,7 @@ def parkride_get_readings(
 def parkride_get_insights(
     limit: int = 10,
     offset: int = 0,
-    response_format: str = "markdown",
-    ctx: Context = None,
+    response_format: str = "json",
 ) -> str:
     """Get paginated list of AI-generated insights.
 
@@ -177,31 +180,30 @@ def parkride_get_insights(
         response_format: "markdown" (default) or "json".
     """
     try:
-        app = _get_ctx(ctx)
-        insights = app.db.get_insights(limit=limit, offset=offset)
-        total = app.db.get_insights_count()
+        data = _api("/insights", limit=limit, offset=offset)
+        insights = data.get("insights", [])
+        total = data.get("total", 0)
 
         if not insights:
-            return "No insights available."
+            return json.dumps({"insights": [], "total": 0})
 
-        if response_format == "json":
-            return json.dumps({"insights": insights, "total": total, "hasMore": offset + len(insights) < total}, indent=2, default=str)
+        if response_format != "json":
+            lines = [f"**{total} total insights** (showing {offset + 1}-{offset + len(insights)})\n"]
+            for ins in insights:
+                lines.append(f"### {ins['title']}")
+                lines.append(f"*{ins['insight_type']}* | {ins['created_at']}\n")
+                lines.append(ins["content"])
+                lines.append("")
+            return "\n".join(lines)
 
-        lines = [f"**{total} total insights** (showing {offset + 1}-{offset + len(insights)})\n"]
-        for ins in insights:
-            lines.append(f"### {ins['title']}")
-            lines.append(f"*{ins['insight_type']}* | {ins['created_at']}\n")
-            lines.append(ins["content"])
-            lines.append("")
-        return "\n".join(lines)
+        return json.dumps(data, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
 
 @mcp.tool(annotations=ToolAnnotations(title="Get Latest Insight", read_only_hint=True))
 def parkride_get_latest_insight(
-    response_format: str = "markdown",
-    ctx: Context = None,
+    response_format: str = "json",
 ) -> str:
     """Get the most recent AI-generated insight.
 
@@ -209,27 +211,27 @@ def parkride_get_latest_insight(
         response_format: "markdown" (default) or "json".
     """
     try:
-        app = _get_ctx(ctx)
-        insight = app.db.get_latest_insight()
+        data = _api("/insights/latest")
+        insight = data.get("insight")
 
         if not insight:
-            return "No insights available yet."
+            return json.dumps({"insight": None})
 
-        if response_format == "json":
-            return json.dumps(insight, indent=2, default=str)
+        if response_format != "json":
+            lines = [
+                f"## {insight['title']}",
+                f"*{insight['insight_type']}* | {insight['created_at']}\n",
+                insight["content"],
+            ]
+            if insight.get("metadata"):
+                meta = insight["metadata"]
+                if isinstance(meta, str):
+                    meta = json.loads(meta)
+                if meta.get("confidence"):
+                    lines.append(f"\n**Confidence:** {meta['confidence']} ({meta.get('days_of_data', '?')} days of data)")
+            return "\n".join(lines)
 
-        lines = [
-            f"## {insight['title']}",
-            f"*{insight['insight_type']}* | {insight['created_at']}\n",
-            insight["content"],
-        ]
-        if insight.get("metadata"):
-            meta = insight["metadata"]
-            if isinstance(meta, str):
-                meta = json.loads(meta)
-            if meta.get("confidence"):
-                lines.append(f"\n**Confidence:** {meta['confidence']} ({meta.get('days_of_data', '?')} days of data)")
-        return "\n".join(lines)
+        return json.dumps(insight, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
@@ -239,7 +241,6 @@ def parkride_generate_insight(
     type: str = "morning_recommendation",
     hours: int = 168,
     carpark: Optional[str] = None,
-    ctx: Context = None,
 ) -> str:
     """Generate a new AI insight using LLM (Ark -> Anthropic fallback). Saves to database.
 
@@ -249,21 +250,19 @@ def parkride_generate_insight(
         carpark: Specific carpark name, or omit for all carparks.
     """
     try:
-        app = _get_ctx(ctx)
-        insight = app.insights.generate_insight(
-            insight_type=type, hours=hours, carpark=carpark
-        )
-        insight_id = app.insights.save_insight(insight)
+        payload = {"type": type, "hours": hours}
+        if carpark:
+            payload["carpark"] = carpark
 
-        lines = [
-            f"## {insight['title']}",
-            f"*{insight['insight_type']}* | Saved as insight #{insight_id}\n",
-            insight["content"],
-        ]
-        meta = insight.get("metadata", {})
-        if meta.get("confidence"):
-            lines.append(f"\n**Confidence:** {meta['confidence']} ({meta.get('days_of_data', '?')} days of data)")
-        return "\n".join(lines)
+        data = _api_post("/insights/generate", payload)
+
+        if "error" in data:
+            return f"Error: {data['error']}"
+
+        insight = data["insight"]
+        insight_id = data.get("id", "?")
+
+        return json.dumps({"id": insight_id, "insight": insight}, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
@@ -271,7 +270,7 @@ def parkride_generate_insight(
 @mcp.tool(annotations=ToolAnnotations(title="Fetch Live Data", read_only_hint=True, open_world_hint=True))
 def parkride_fetch_live(
     carpark: Optional[str] = None,
-    response_format: str = "markdown",
+    response_format: str = "json",
 ) -> str:
     """Fetch live parking data from Transport NSW GraphQL API.
 
@@ -280,29 +279,42 @@ def parkride_fetch_live(
         response_format: "markdown" (default) or "json".
     """
     try:
-        from parkride.collector import fetch_with_retry, filter_carpark
+        resp = httpx.post(
+            GRAPHQL_ENDPOINT,
+            json={"operationName": "getLocations", "query": GRAPHQL_QUERY, "variables": {}},
+            headers={"Content-Type": "application/json"},
+            timeout=30,
+        )
+        resp.raise_for_status()
 
-        data = fetch_with_retry()
-        if data is None:
-            return "Failed to fetch live data from Transport NSW API after 3 retries."
+        locations = resp.json()["data"]["result"]["pnrLocations"]
+        data = [
+            {
+                "name": loc["name"].replace("Park&Ride - ", ""),
+                "spots": loc["spots"],
+                "occupancy": loc["occupancy"],
+                "available": loc["spots"] - loc["occupancy"],
+            }
+            for loc in locations
+        ]
 
         if carpark:
-            data = filter_carpark(data, carpark)
+            data = [d for d in data if carpark.lower() in d["name"].lower()]
 
         if not data:
-            return "No carparks matched the filter." if carpark else "No data returned from API."
+            return json.dumps({"locations": [], "filter": carpark})
 
-        if response_format == "json":
-            return json.dumps(data, indent=2, default=str)
+        if response_format != "json":
+            lines = [
+                f"**Live Data** ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n",
+                "| Carpark | Available | Occupied | Total |",
+                "| --- | ---: | ---: | ---: |",
+            ]
+            for d in sorted(data, key=lambda x: x["name"]):
+                lines.append(f"| {d['name']} | {d['available']} | {d['occupancy']} | {d['spots']} |")
+            return "\n".join(lines)
 
-        lines = [
-            f"**Live Data** ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n",
-            "| Carpark | Available | Occupied | Total |",
-            "| --- | ---: | ---: | ---: |",
-        ]
-        for d in sorted(data, key=lambda x: x["name"]):
-            lines.append(f"| {d['name']} | {d['available']} | {d['occupancy']} | {d['spots']} |")
-        return "\n".join(lines)
+        return json.dumps({"timestamp": datetime.now().isoformat(), "locations": data}, indent=2, default=str)
     except Exception as e:
         return _handle_error(e)
 
